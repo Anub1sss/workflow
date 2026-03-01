@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+*.log
+sessions/
+*.session
+*.session-journal
+.env
+sessions.json
+node_modules/
+build/
+*.zip
+*.db-shm
+*.db-wal
+*.xlsx
+.cursor/
