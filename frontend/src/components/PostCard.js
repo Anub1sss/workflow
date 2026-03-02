@@ -1,5 +1,5 @@
-import React from "react";
-import { Eye, Share2, Heart, MessageSquare, TrendingUp, TrendingDown, Camera, ExternalLink, Star } from "lucide-react";
+import React, { useState } from "react";
+import { Eye, Share2, Heart, MessageSquare, TrendingUp, TrendingDown, Camera, ExternalLink, Star, ChevronDown, ChevronUp } from "lucide-react";
 import { useFavorites } from "../hooks/useFavorites";
 
 const CATEGORY_COLORS = {
@@ -30,6 +30,14 @@ function formatTime(d) {
   return dt.toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" });
 }
 
+function formatFullTime(d) {
+  if (!d) return "";
+  const dt = new Date(d);
+  return dt.toLocaleString("ru-RU", {
+    day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
+  });
+}
+
 function formatNum(n) {
   if (!n) return "0";
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
@@ -43,7 +51,7 @@ function DevBadge({ value, label }) {
   const Icon = positive ? TrendingUp : TrendingDown;
   const color = positive ? "var(--tg-green)" : "var(--tg-red)";
   return (
-    <span style={{ ...styles.devBadge, color }}>
+    <span style={{ ...styles.devBadge, color, background: positive ? "var(--tg-green-muted)" : "var(--tg-red-muted)" }}>
       <Icon size={10} /> {label} {positive ? "+" : ""}{value.toFixed(0)}%
     </span>
   );
@@ -51,6 +59,7 @@ function DevBadge({ value, label }) {
 
 export default function PostCard({ post, onClickChannel }) {
   const { isFavorite, toggle } = useFavorites();
+  const [showStats, setShowStats] = useState(false);
   const catColor = CATEGORY_COLORS[post.category] || "var(--tg-accent)";
   const text = (post.text || "").trim();
   const preview = text.length > 400 ? text.slice(0, 400) + "..." : text;
@@ -77,279 +86,322 @@ export default function PostCard({ post, onClickChannel }) {
   };
 
   return (
-    <div style={styles.message}>
-      <div style={styles.avatarCol} onClick={handleChannelClick}>
-        <div style={styles.avatar}>{channelInitial}</div>
-      </div>
-
-      <div style={styles.bubble}>
-        <div style={styles.bubbleHeader}>
-          <span style={styles.channelName} onClick={handleChannelClick}>
-            {post.channel_title || post.channel_username}
-          </span>
+    <div style={styles.card} className="post-card">
+      {/* Channel header - TG style */}
+      <div style={styles.channelHeader}>
+        <div style={styles.channelLeft} onClick={handleChannelClick}>
+          <div style={styles.avatar}>{channelInitial}</div>
+          <div style={styles.channelInfo}>
+            <span style={styles.channelName}>
+              {post.channel_title || post.channel_username}
+            </span>
+            <span style={styles.channelDate}>{formatFullTime(post.date)}</span>
+          </div>
+        </div>
+        <div style={styles.channelActions}>
           <button
             style={{ ...styles.favBtn, color: isFav ? "var(--tg-orange)" : "var(--tg-text-muted)" }}
             onClick={handleToggleFav}
             title={isFav ? "Убрать из избранного" : "В избранное"}
           >
-            <Star size={12} fill={isFav ? "var(--tg-orange)" : "none"} />
+            <Star size={14} fill={isFav ? "var(--tg-orange)" : "none"} />
           </button>
-          <span style={styles.time}>{formatTime(post.date)}</span>
-        </div>
-
-        {post.category && (
-          <span style={{ ...styles.categoryTag, background: catColor + "20", color: catColor, borderColor: catColor + "40" }}>
-            {post.category}
-          </span>
-        )}
-
-        {(post.is_ad === 1 || post.is_gambling === 1) && (
-          <div style={styles.warningRow}>
-            {post.is_ad === 1 && <span style={styles.adLabel}>Реклама</span>}
-            {post.is_gambling === 1 && <span style={styles.gamblingLabel}>Гемблинг</span>}
-          </div>
-        )}
-
-        {post.has_photo === 1 && (
-          <div style={styles.photoPlaceholder}>
-            <Camera size={20} color="var(--tg-text-muted)" />
-            <span style={styles.photoText}>Фото</span>
-          </div>
-        )}
-
-        {preview ? (
-          <p style={styles.text}>{preview}</p>
-        ) : (
-          <p style={styles.mediaText}>Медиа-пост</p>
-        )}
-
-        {(post.reactions > 0 || post.comments > 0 || post.forwards > 0) && (
-          <div style={styles.reactionsRow}>
-            {post.reactions > 0 && (
-              <span style={styles.reaction}>
-                <Heart size={13} /> {formatNum(post.reactions)}
-              </span>
-            )}
-            {post.comments > 0 && (
-              <span style={styles.reaction}>
-                <MessageSquare size={13} /> {formatNum(post.comments)}
-              </span>
-            )}
-            {post.forwards > 0 && (
-              <span style={styles.reaction}>
-                <Share2 size={13} /> {formatNum(post.forwards)}
-              </span>
-            )}
-          </div>
-        )}
-
-        {hasDeviation && (
-          <div style={styles.devRow}>
-            <DevBadge value={post.views_dev} label="Просм." />
-            <DevBadge value={post.reactions_dev} label="Реакц." />
-            <DevBadge value={post.comments_dev} label="Комм." />
-            <DevBadge value={post.forwards_dev} label="Реп." />
-          </div>
-        )}
-
-        <div style={styles.bubbleFooter}>
-          {post.views > 0 && (
-            <span style={styles.viewsCounter}>
-              <Eye size={12} /> {formatNum(post.views)}
-            </span>
-          )}
-          <span style={styles.footerTime}>{formatTime(post.date)}</span>
           {postLink && (
             <a href={postLink} target="_blank" rel="noopener noreferrer"
-              style={styles.openLink} onClick={e => e.stopPropagation()}>
-              <ExternalLink size={11} />
+              style={styles.externalLink} onClick={e => e.stopPropagation()}>
+              <ExternalLink size={13} />
             </a>
           )}
         </div>
       </div>
+
+      {/* Labels row */}
+      {(post.category || post.is_ad === 1 || post.is_gambling === 1) && (
+        <div style={styles.labelsRow}>
+          {post.category && (
+            <span style={{ ...styles.categoryTag, background: catColor + "18", color: catColor }}>
+              {post.category}
+            </span>
+          )}
+          {post.is_ad === 1 && <span style={styles.adLabel}>Реклама</span>}
+          {post.is_gambling === 1 && <span style={styles.gamblingLabel}>Гемблинг</span>}
+        </div>
+      )}
+
+      {/* Photo area - full width like TG */}
+      {post.has_photo === 1 && (
+        <div style={styles.photoArea}>
+          <Camera size={24} color="var(--tg-text-muted)" />
+          <span style={styles.photoText}>Фото</span>
+        </div>
+      )}
+
+      {/* Text body */}
+      {preview ? (
+        <div style={styles.textBody}>{preview}</div>
+      ) : (
+        <div style={styles.mediaBody}>Медиа-пост</div>
+      )}
+
+      {/* Reactions row - TG pill style */}
+      {(post.reactions > 0 || post.comments > 0 || post.forwards > 0) && (
+        <div style={styles.reactionsRow}>
+          {post.reactions > 0 && (
+            <span style={styles.reactionPill}>
+              <Heart size={14} color="#e05353" /> {formatNum(post.reactions)}
+            </span>
+          )}
+          {post.comments > 0 && (
+            <span style={styles.reactionPill}>
+              <MessageSquare size={14} /> {formatNum(post.comments)}
+            </span>
+          )}
+          {post.forwards > 0 && (
+            <span style={styles.reactionPill}>
+              <Share2 size={14} /> {formatNum(post.forwards)}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Footer - views & time like TG bottom-right */}
+      <div style={styles.footer}>
+        <div style={styles.footerLeft}>
+          {post.views > 0 && (
+            <span style={styles.viewsCount}>
+              <Eye size={14} /> {formatNum(post.views)}
+            </span>
+          )}
+          {hasDeviation && (
+            <button
+              style={styles.statsToggle}
+              onClick={(e) => { e.stopPropagation(); setShowStats(p => !p); }}
+              title="Отклонения от среднего"
+            >
+              {showStats ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+              <TrendingUp size={11} />
+            </button>
+          )}
+        </div>
+        <span style={styles.footerTime}>{formatTime(post.date)}</span>
+      </div>
+
+      {/* Expandable stats */}
+      {showStats && hasDeviation && (
+        <div style={styles.statsExpanded}>
+          <DevBadge value={post.views_dev} label="Просм." />
+          <DevBadge value={post.reactions_dev} label="Реакц." />
+          <DevBadge value={post.comments_dev} label="Комм." />
+          <DevBadge value={post.forwards_dev} label="Реп." />
+        </div>
+      )}
     </div>
   );
 }
 
 const styles = {
-  message: {
-    display: "flex",
-    gap: 8,
-    padding: "4px 12px",
+  card: {
+    background: "var(--tg-bg-panel)",
+    borderBottom: "1px solid var(--tg-border)",
+    padding: 0,
     animation: "fadeIn 0.2s ease",
+    transition: "background 0.1s",
   },
-  avatarCol: {
-    flexShrink: 0,
-    paddingTop: 2,
+  channelHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "10px 14px 6px",
+  },
+  channelLeft: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    cursor: "pointer",
+    flex: 1,
+    minWidth: 0,
   },
   avatar: {
-    width: 36,
-    height: 36,
+    width: 40,
+    height: 40,
     borderRadius: "50%",
     background: "linear-gradient(135deg, #2aabee, #9b7cd5)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     fontWeight: 700,
-    fontSize: 14,
+    fontSize: 16,
     color: "#fff",
+    flexShrink: 0,
   },
-  bubble: {
-    background: "var(--tg-bg-bubble)",
-    borderRadius: "4px 18px 18px 18px",
-    padding: "8px 12px 6px",
-    maxWidth: 480,
-    minWidth: 200,
-    position: "relative",
+  channelInfo: {
     display: "flex",
     flexDirection: "column",
-    gap: 4,
-    boxShadow: "0 1px 2px rgba(0,0,0,0.15)",
-  },
-  bubbleHeader: {
-    display: "flex",
-    alignItems: "baseline",
-    gap: 8,
-    marginBottom: 2,
+    minWidth: 0,
   },
   channelName: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: 600,
-    color: "var(--tg-accent)",
-    cursor: "pointer",
+    color: "var(--tg-text)",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  },
+  channelDate: {
+    fontSize: 12,
+    color: "var(--tg-text-muted)",
+  },
+  channelActions: {
     display: "flex",
     alignItems: "center",
+    gap: 4,
+    flexShrink: 0,
   },
   favBtn: {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    width: 22,
-    height: 22,
+    width: 30,
+    height: 30,
     border: "none",
-    borderRadius: 6,
+    borderRadius: 8,
     background: "transparent",
     cursor: "pointer",
     padding: 0,
     transition: "color 0.15s",
-    flexShrink: 0,
   },
-  time: {
-    fontSize: 11,
+  externalLink: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 30,
+    height: 30,
+    borderRadius: 8,
     color: "var(--tg-text-muted)",
-    marginLeft: "auto",
-    flexShrink: 0,
+    transition: "color 0.15s",
+  },
+  labelsRow: {
+    display: "flex",
+    gap: 6,
+    padding: "0 14px 4px",
+    flexWrap: "wrap",
   },
   categoryTag: {
-    alignSelf: "flex-start",
     padding: "2px 8px",
-    borderRadius: 6,
+    borderRadius: 4,
     fontSize: 11,
     fontWeight: 600,
-    border: "1px solid",
-  },
-  warningRow: {
-    display: "flex",
-    gap: 4,
   },
   adLabel: {
-    padding: "1px 6px",
+    padding: "2px 8px",
     borderRadius: 4,
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 600,
     background: "var(--tg-orange-muted)",
     color: "var(--tg-orange)",
   },
   gamblingLabel: {
-    padding: "1px 6px",
+    padding: "2px 8px",
     borderRadius: 4,
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 600,
     background: "var(--tg-red-muted)",
     color: "var(--tg-red)",
   },
-  photoPlaceholder: {
-    background: "rgba(255,255,255,0.04)",
-    borderRadius: 10,
-    padding: "20px 0",
+  photoArea: {
+    margin: "4px 0",
+    background: "rgba(255,255,255,0.03)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
+    gap: 8,
+    padding: "32px 0",
   },
   photoText: {
-    fontSize: 12,
+    fontSize: 13,
     color: "var(--tg-text-muted)",
   },
-  text: {
+  textBody: {
     fontSize: 14,
     color: "var(--tg-text)",
     lineHeight: 1.55,
     whiteSpace: "pre-wrap",
     wordBreak: "break-word",
+    padding: "4px 14px 8px",
   },
-  mediaText: {
+  mediaBody: {
     fontSize: 13,
     color: "var(--tg-text-muted)",
     fontStyle: "italic",
+    padding: "4px 14px 8px",
   },
   reactionsRow: {
     display: "flex",
-    gap: 4,
+    gap: 6,
     flexWrap: "wrap",
-    marginTop: 4,
+    padding: "0 14px 8px",
   },
-  reaction: {
+  reactionPill: {
     display: "inline-flex",
     alignItems: "center",
-    gap: 4,
-    padding: "3px 10px",
+    gap: 5,
+    padding: "5px 12px",
     borderRadius: 20,
     background: "var(--tg-reaction-bg)",
-    color: "var(--tg-accent)",
-    fontSize: 12,
+    color: "var(--tg-text)",
+    fontSize: 13,
     fontWeight: 500,
     cursor: "default",
     transition: "background 0.15s",
   },
-  devRow: {
+  footer: {
     display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "0 14px 10px",
+  },
+  footerLeft: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+  },
+  viewsCount: {
+    display: "flex",
+    alignItems: "center",
     gap: 4,
+    fontSize: 13,
+    color: "var(--tg-text-muted)",
+  },
+  statsToggle: {
+    display: "flex",
+    alignItems: "center",
+    gap: 2,
+    padding: "2px 6px",
+    border: "none",
+    borderRadius: 6,
+    background: "rgba(255,255,255,0.05)",
+    color: "var(--tg-text-muted)",
+    cursor: "pointer",
+    fontSize: 10,
+  },
+  footerTime: {
+    fontSize: 12,
+    color: "var(--tg-text-muted)",
+  },
+  statsExpanded: {
+    display: "flex",
+    gap: 6,
     flexWrap: "wrap",
-    marginTop: 2,
+    padding: "0 14px 10px",
+    animation: "fadeIn 0.15s ease",
   },
   devBadge: {
     display: "inline-flex",
     alignItems: "center",
     gap: 3,
-    padding: "2px 7px",
+    padding: "3px 8px",
     borderRadius: 10,
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 600,
-    background: "rgba(255,255,255,0.04)",
-  },
-  bubbleFooter: {
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    justifyContent: "flex-end",
-    marginTop: 2,
-  },
-  viewsCounter: {
-    display: "flex",
-    alignItems: "center",
-    gap: 3,
-    fontSize: 11,
-    color: "var(--tg-text-muted)",
-  },
-  footerTime: {
-    fontSize: 11,
-    color: "var(--tg-text-muted)",
-  },
-  openLink: {
-    display: "flex",
-    alignItems: "center",
-    color: "var(--tg-text-muted)",
-    opacity: 0.7,
   },
 };

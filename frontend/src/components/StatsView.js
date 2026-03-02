@@ -1,121 +1,565 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, RadarChart, Radar, PolarGrid,
-  PolarAngleAxis, PolarRadiusAxis,
+  RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
 } from "recharts";
 import {
-  Users, Eye, Layers, TrendingUp, BarChart3, Activity,
-  Megaphone, MessageSquare, AlertTriangle, Calendar, Clock,
-  GitCompare, Search, X,
+  Users, Search, X, SlidersHorizontal, Columns3,
+  ChevronDown, ChevronUp, Star, RotateCcw, Clock, GitCompare, Download,
 } from "lucide-react";
-import { fetchStatsFiltered, fetchPostingHours, fetchCompareChannels, fetchChannelsList } from "../api";
+import {
+  fetchChannels, fetchPostingHours, fetchCompareChannels, fetchChannelsList,
+} from "../api";
 import { useFavorites } from "../hooks/useFavorites";
 
 const COLORS = ["#5ea5e5", "#9b7cd5", "#4fae4e", "#e8a447", "#e05353", "#5bcbcf", "#d75fa0", "#e88a47"];
 
+const ALL_COLUMNS = [
+  { key: "title", label: "Название", fixed: true, defaultVisible: true },
+  { key: "subscribers", label: "Подписчики", numeric: true, defaultVisible: true },
+  { key: "ci_index", label: "Ads Index", numeric: true, defaultVisible: true },
+  { key: "avg_views_30d", label: "Просмотры", numeric: true, defaultVisible: true },
+  { key: "er_pct", label: "ER", numeric: true, decimal: 2, defaultVisible: true },
+  { key: "category_tgstat", label: "Категория", defaultVisible: true },
+  { key: "publish_frequency", label: "Частота", numeric: true, decimal: 1, defaultVisible: true },
+  { key: "err_pct", label: "ERR%", numeric: true, decimal: 2, defaultVisible: false },
+  { key: "visibility_pct", label: "Видимость%", numeric: true, decimal: 1, defaultVisible: false },
+  { key: "posts_30d", label: "Постов/мес", numeric: true, defaultVisible: false },
+  { key: "publish_stability", label: "Стабильн.%", numeric: true, defaultVisible: false },
+  { key: "channel_age_days", label: "Возраст", numeric: true, defaultVisible: false },
+  { key: "ad_pct_30d", label: "Реклама%", numeric: true, decimal: 1, defaultVisible: false },
+  { key: "gambling_pct_30d", label: "Гемблинг%", numeric: true, decimal: 1, defaultVisible: false },
+  { key: "channel_type_detected", label: "Тип", defaultVisible: false },
+  { key: "has_linked_chat", label: "Чат", defaultVisible: false },
+  { key: "country", label: "Страна", defaultVisible: false },
+  { key: "language", label: "Язык", defaultVisible: false },
+  { key: "last_post_date", label: "Последний пост", defaultVisible: false },
+];
+
+const DEFAULT_VISIBLE = ALL_COLUMNS.filter(c => c.defaultVisible).map(c => c.key);
+
 function formatNum(n) {
-  if (!n) return "0";
+  if (!n && n !== 0) return "—";
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
   if (n >= 1_000) return (n / 1_000).toFixed(1) + "K";
   return String(n);
 }
 
-export default function StatsView() {
-  const [tab, setTab] = useState("overview");
-  const [stats, setStats] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [showAll, setShowAll] = useState({ subs: false, views: false, er: false });
+function timeAgo(ts) {
+  if (!ts) return "—";
+  const diff = Math.floor(Date.now() / 1000) - ts;
+  if (diff < 3600) return Math.floor(diff / 60) + " мин";
+  if (diff < 86400) return Math.floor(diff / 3600) + " ч";
+  if (diff < 2592000) return Math.floor(diff / 86400) + " дн";
+  return new Date(ts * 1000).toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
+}
 
-  const [hours, setHours] = useState([]);
-  const [hoursLoading, setHoursLoading] = useState(false);
+function erColor(val) {
+  if (val >= 5) return "var(--tg-green)";
+  if (val >= 1) return "#7bc67b";
+  if (val >= 0.3) return "var(--tg-orange)";
+  return "var(--tg-text-secondary)";
+}
 
-  const [compareSearch, setCompareSearch] = useState("");
-  const [channelsList, setChannelsList] = useState([]);
-  const [compareSelected, setCompareSelected] = useState([]);
-  const [compareData, setCompareData] = useState([]);
-  const [compareLoading, setCompareLoading] = useState(false);
+function renderCell(ch, col) {
+  switch (col.key) {
+    case "title":
+      return (
+        <div style={cellS.channelCell}>
+          <div style={cellS.avatar}>
+            {ch.image100 && ch.image100.startsWith("http") ? (
+              <img src={ch.image100} alt="" style={cellS.avatarImg}
+                onError={e => { e.target.style.display = "none"; }} />
+            ) : (
+              <span>{(ch.title || "?").charAt(0).toUpperCase()}</span>
+            )}
+          </div>
+          <div style={cellS.info}>
+            <span style={cellS.name}>{ch.title || ch.username}</span>
+            <span style={cellS.username}>
+              {ch.channel_type_detected === "закрытый" ? "Закрытый канал" : "Публичный канал"}
+            </span>
+          </div>
+        </div>
+      );
+    case "subscribers":
+      return <span style={cellS.numVal}>{formatNum(ch.tg_participants || ch.subscribers)}</span>;
+    case "ci_index":
+      return <span style={cellS.numVal}>{ch.ci_index ? formatNum(ch.ci_index) : "—"}</span>;
+    case "avg_views_30d":
+      return <span style={cellS.numVal}>{formatNum(ch.avg_views_30d || ch.avg_views)}</span>;
+    case "er_pct": {
+      const v = ch.er_pct || 0;
+      return <span style={{ ...cellS.numVal, color: erColor(v) }}>{v.toFixed(2)}%</span>;
+    }
+    case "err_pct": {
+      const v = ch.err_pct || 0;
+      return <span style={{ ...cellS.numVal, color: erColor(v) }}>{v.toFixed(2)}%</span>;
+    }
+    case "category_tgstat":
+      return ch.category_tgstat
+        ? <span style={cellS.categoryTag}>{ch.category_tgstat}</span>
+        : <span style={cellS.muted}>{ch.primary_niche || "—"}</span>;
+    case "visibility_pct":
+      return <span style={cellS.numVal}>{(ch.visibility_pct || 0).toFixed(1)}%</span>;
+    case "has_linked_chat":
+      return ch.has_linked_chat === 1 ? <span style={cellS.chatYes}>✓</span> : <span style={cellS.muted}>—</span>;
+    case "channel_type_detected":
+      return <span style={cellS.typeTag}>{ch.channel_type_detected || ch.channel_type || "—"}</span>;
+    case "last_post_date":
+      return <span style={cellS.muted}>{timeAgo(ch.last_post_date)}</span>;
+    case "channel_age_days":
+      if (!ch.channel_age_days) return "—";
+      return ch.channel_age_days > 365
+        ? `${Math.floor(ch.channel_age_days / 365)}г ${Math.floor((ch.channel_age_days % 365) / 30)}м`
+        : `${ch.channel_age_days}д`;
+    case "country":
+      return <span style={cellS.muted}>{ch.country || "—"}</span>;
+    case "language":
+      return <span style={cellS.muted}>{ch.language || "—"}</span>;
+    default: {
+      const val = ch[col.key];
+      if (val === null || val === undefined) return "—";
+      if (col.decimal !== undefined) return Number(val).toFixed(col.decimal);
+      if (col.numeric) return formatNum(val);
+      return String(val);
+    }
+  }
+}
 
-  const { favorites } = useFavorites();
+function FavStar({ channel }) {
+  const { isFavorite, toggle } = useFavorites();
+  const fav = isFavorite(channel.username);
+  return (
+    <button
+      style={{
+        display: "flex", alignItems: "center", justifyContent: "center",
+        width: 28, height: 28, border: "none", borderRadius: 6,
+        background: "transparent", cursor: "pointer", padding: 0,
+        color: fav ? "var(--tg-orange)" : "var(--tg-text-muted)",
+        transition: "color 0.15s",
+      }}
+      onClick={(e) => { e.stopPropagation(); toggle(channel); }}
+      title={fav ? "Убрать из избранного" : "В избранное"}
+    >
+      <Star size={15} fill={fav ? "var(--tg-orange)" : "none"} />
+    </button>
+  );
+}
 
-  const load = useCallback(() => {
-    setLoading(true);
-    fetchStatsFiltered({})
-      .then(setStats)
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, []);
+export default function StatsView({ onSelectChannel }) {
+  const [tab, setTab] = useState("catalog");
 
-  useEffect(() => { load(); }, [load]);
+  return (
+    <div style={s.container}>
+      <div style={s.tabBar}>
+        {[
+          { id: "catalog", label: "Каналы", icon: <Users size={14} /> },
+          { id: "hours", label: "Время публикаций", icon: <Clock size={14} /> },
+          { id: "compare", label: "Сравнение каналов", icon: <GitCompare size={14} /> },
+        ].map(t => (
+          <button
+            key={t.id}
+            style={{ ...s.tab, ...(tab === t.id ? s.tabActive : {}) }}
+            onClick={() => setTab(t.id)}
+          >
+            {t.icon} {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "catalog" && <CatalogTab onSelectChannel={onSelectChannel} />}
+      {tab === "hours" && <HoursTab />}
+      {tab === "compare" && <CompareTab />}
+    </div>
+  );
+}
+
+/* ==================== CATALOG TAB ==================== */
+function CatalogTab({ onSelectChannel }) {
+  const [channels, setChannels] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState("");
+  const [sort, setSort] = useState("subscribers");
+  const [order, setOrder] = useState("desc");
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [customizeOpen, setCustomizeOpen] = useState(false);
+  const [filters, setFilters] = useState({});
+  const [visibleCols, setVisibleCols] = useState(() => {
+    try {
+      const saved = localStorage.getItem("tg_catalog_cols_v2");
+      return saved ? JSON.parse(saved) : DEFAULT_VISIBLE;
+    } catch { return DEFAULT_VISIBLE; }
+  });
+
+  const sentinelRef = useRef(null);
+  const scrollRef = useRef(null);
+  const loadingRef = useRef(false);
 
   useEffect(() => {
-    if (tab === "hours") {
-      setHoursLoading(true);
-      const params = favorites.length > 0
-        ? { channels: favorites.map(f => f.username).join(",") }
-        : {};
-      fetchPostingHours(params)
-        .then(setHours)
-        .catch(console.error)
-        .finally(() => setHoursLoading(false));
+    localStorage.setItem("tg_catalog_cols_v2", JSON.stringify(visibleCols));
+  }, [visibleCols]);
+
+  const reset = useCallback(() => {
+    setChannels([]);
+    setPage(1);
+    setHasMore(true);
+  }, []);
+
+  useEffect(() => { reset(); }, [sort, order, search, filters, reset]);
+
+  const loadPage = useCallback(async (p) => {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
+    setLoading(true);
+    try {
+      const params = { page: p, sort, order, search: search || undefined, per_page: 50 };
+      Object.entries(filters).forEach(([k, v]) => {
+        if (v) params[k] = v;
+      });
+      const result = await fetchChannels(params);
+      setChannels(prev => p === 1 ? result.channels : [...prev, ...result.channels]);
+      setTotal(result.total);
+      setHasMore(p < result.pages);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+      loadingRef.current = false;
     }
-  }, [tab, favorites]);
+  }, [sort, order, search, filters]);
+
+  useEffect(() => { loadPage(page); }, [page, loadPage]);
+
+  useEffect(() => {
+    if (!sentinelRef.current) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && hasMore && !loadingRef.current) {
+          setPage(prev => prev + 1);
+        }
+      },
+      { root: scrollRef.current, rootMargin: "300px" }
+    );
+    observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, [hasMore]);
+
+  const handleSort = (key) => {
+    if (key === "title") return;
+    if (sort === key) {
+      setOrder(prev => prev === "desc" ? "asc" : "desc");
+    } else {
+      setSort(key);
+      setOrder("desc");
+    }
+  };
+
+  const toggleCol = (key) => {
+    setVisibleCols(prev =>
+      prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+    );
+  };
+
+  const activeCols = ALL_COLUMNS.filter(c => visibleCols.includes(c.key));
+  const activeFilterCount = Object.values(filters).filter(v => v).length;
+
+  return (
+    <div style={s.catalogContainer}>
+      {/* Top toolbar */}
+      <div style={s.toolbar}>
+        <div style={s.toolbarLeft}>
+          <h2 style={s.heading}>Telegram каналы</h2>
+          <span style={s.totalBadge}>{formatNum(total)}</span>
+        </div>
+        <div style={s.toolbarRight}>
+          <div style={s.searchWrap}>
+            <Search size={14} color="var(--tg-text-muted)" />
+            <input style={s.searchInput} placeholder="Войдите, чтобы искать"
+              value={search} onChange={e => setSearch(e.target.value)} />
+            {search && (
+              <button style={s.searchClear} onClick={() => setSearch("")}>
+                <X size={12} />
+              </button>
+            )}
+          </div>
+
+          <button
+            style={{ ...s.toolBtn, ...(customizeOpen ? s.toolBtnActive : {}) }}
+            onClick={() => { setCustomizeOpen(p => !p); setFilterOpen(false); }}
+          >
+            <Columns3 size={14} /> Кастомизация
+          </button>
+
+          <button style={s.toolBtn} title="Экспорт (скоро)">
+            <Download size={14} /> Экспорт
+          </button>
+
+          <button
+            style={{
+              ...s.toolBtn,
+              ...(filterOpen ? s.toolBtnActive : {}),
+              ...(activeFilterCount > 0 ? { borderColor: "var(--tg-accent)", color: "var(--tg-accent)" } : {}),
+            }}
+            onClick={() => { setFilterOpen(p => !p); setCustomizeOpen(false); }}
+          >
+            <SlidersHorizontal size={14} /> Фильтр
+            {activeFilterCount > 0 && <span style={s.filterBadge}>{activeFilterCount}</span>}
+          </button>
+        </div>
+      </div>
+
+      {/* Customization panel */}
+      {customizeOpen && (
+        <div style={s.panelRow}>
+          <span style={s.panelLabel}>Колонки таблицы:</span>
+          <div style={s.panelChips}>
+            {ALL_COLUMNS.filter(c => !c.fixed).map(c => (
+              <label key={c.key} style={{
+                ...s.panelChip,
+                ...(visibleCols.includes(c.key) ? s.panelChipActive : {}),
+              }}>
+                <input type="checkbox" checked={visibleCols.includes(c.key)}
+                  onChange={() => toggleCol(c.key)} style={{ display: "none" }} />
+                {c.label}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Filter panel */}
+      {filterOpen && (
+        <div style={s.filterPanel}>
+          <div style={s.filterGrid}>
+            <FilterInput label="Мин. подписчиков" value={filters.min_subs}
+              onChange={v => setFilters(p => ({ ...p, min_subs: v }))} />
+            <FilterInput label="Макс. подписчиков" value={filters.max_subs}
+              onChange={v => setFilters(p => ({ ...p, max_subs: v }))} />
+            <FilterInput label="Мин. ER%" value={filters.min_er} step="0.01"
+              onChange={v => setFilters(p => ({ ...p, min_er: v }))} />
+            <FilterInput label="Макс. ER%" value={filters.max_er} step="0.01"
+              onChange={v => setFilters(p => ({ ...p, max_er: v }))} />
+            <FilterInput label="Мин. просмотры" value={filters.min_views}
+              onChange={v => setFilters(p => ({ ...p, min_views: v }))} />
+            <FilterInput label="Макс. просмотры" value={filters.max_views}
+              onChange={v => setFilters(p => ({ ...p, max_views: v }))} />
+            <FilterInput label="Мин. видимость%" value={filters.min_visibility}
+              onChange={v => setFilters(p => ({ ...p, min_visibility: v }))} />
+            <FilterInput label="Мин. постов/мес" value={filters.min_posts}
+              onChange={v => setFilters(p => ({ ...p, min_posts: v }))} />
+            <FilterInput label="Мин. частота" value={filters.min_frequency} step="0.1"
+              onChange={v => setFilters(p => ({ ...p, min_frequency: v }))} />
+            <FilterInput label="Мин. стабильность%" value={filters.min_stability}
+              onChange={v => setFilters(p => ({ ...p, min_stability: v }))} />
+            <FilterInput label="Макс. реклама%" value={filters.max_ad_pct} step="0.1"
+              onChange={v => setFilters(p => ({ ...p, max_ad_pct: v }))} />
+            <FilterInput label="Макс. гемблинг%" value={filters.max_gambling_pct} step="0.1"
+              onChange={v => setFilters(p => ({ ...p, max_gambling_pct: v }))} />
+          </div>
+          <div style={s.filterBottom}>
+            <select style={s.filterSelect} value={filters.type || ""}
+              onChange={e => setFilters(p => ({ ...p, type: e.target.value }))}>
+              <option value="">Все типы</option>
+              <option value="личный блог">Личный блог</option>
+              <option value="гибрид">Гибрид</option>
+              <option value="обезличенный">Обезличенный</option>
+            </select>
+            <label style={s.filterCheckLabel}>
+              <input type="checkbox" checked={filters.has_chat === "1"}
+                onChange={e => setFilters(p => ({ ...p, has_chat: e.target.checked ? "1" : "" }))} />
+              С чатом
+            </label>
+            <label style={s.filterCheckLabel}>
+              <input type="checkbox" checked={filters.hide_gambling === "1"}
+                onChange={e => setFilters(p => ({ ...p, hide_gambling: e.target.checked ? "1" : "" }))} />
+              Без гемблинга
+            </label>
+            <button style={s.resetBtn} onClick={() => setFilters({})}>
+              <RotateCcw size={12} /> Сбросить
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Table */}
+      <div style={s.tableWrap} ref={scrollRef}>
+        <table style={s.table}>
+          <thead>
+            <tr>
+              <th style={s.thNum}>#</th>
+              <th style={s.thStar}></th>
+              {activeCols.map(col => (
+                <th
+                  key={col.key}
+                  style={{
+                    ...s.th,
+                    ...(col.key === "title" ? s.thTitle : {}),
+                    cursor: col.key !== "title" ? "pointer" : "default",
+                  }}
+                  onClick={() => handleSort(col.key)}
+                >
+                  <span style={s.thContent}>
+                    {col.label}
+                    {sort === col.key && (
+                      order === "desc" ? <ChevronDown size={12} /> : <ChevronUp size={12} />
+                    )}
+                  </span>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {channels.map((ch, idx) => (
+              <tr
+                key={ch.username}
+                style={s.tr}
+                onClick={() => onSelectChannel && onSelectChannel(ch)}
+                onMouseEnter={e => e.currentTarget.style.background = "var(--tg-bg-hover)"}
+                onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+              >
+                <td style={s.tdNum}>{idx + 1}</td>
+                <td style={s.tdStar}><FavStar channel={ch} /></td>
+                {activeCols.map(col => (
+                  <td key={col.key} style={{ ...s.td, ...(col.key === "title" ? s.tdTitle : {}) }}>
+                    {renderCell(ch, col)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        {loading && (
+          <div style={s.loadingRow}>
+            <div style={s.spinner} />
+          </div>
+        )}
+
+        <div ref={sentinelRef} style={{ height: 1 }} />
+      </div>
+    </div>
+  );
+}
+
+/* ==================== HOURS TAB ==================== */
+function HoursTab() {
+  const [hours, setHours] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const { favorites } = useFavorites();
+
+  useEffect(() => {
+    setLoading(true);
+    const params = favorites.length > 0
+      ? { channels: favorites.map(f => f.username).join(",") }
+      : {};
+    fetchPostingHours(params)
+      .then(setHours)
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [favorites]);
+
+  if (loading) return <div style={s.emptyState}>Загрузка...</div>;
+
+  const best = hours.length > 0
+    ? [...hours].sort((a, b) => b.count - a.count).slice(0, 3)
+    : [];
+
+  return (
+    <div style={s.tabContent}>
+      <div style={s.card}>
+        <h3 style={s.cardTitle}>
+          <Clock size={16} /> Лучшее время публикации
+        </h3>
+        <p style={s.cardSubtitle}>
+          {favorites.length > 0
+            ? `По избранным каналам (${favorites.length})`
+            : "По всем каналам"}
+        </p>
+        {hours.length > 0 ? (
+          <>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={hours} margin={{ left: 0, right: 10 }}>
+                <XAxis dataKey="hour" tick={{ fill: "var(--tg-text-secondary)", fontSize: 11 }}
+                  tickFormatter={h => `${h}:00`} />
+                <YAxis tick={{ fill: "var(--tg-text-muted)", fontSize: 11 }} />
+                <Tooltip contentStyle={tooltipStyle}
+                  formatter={(val) => [val, "Постов"]}
+                  labelFormatter={(h) => `${h}:00 — ${h}:59`} />
+                <Bar dataKey="count" fill="var(--tg-accent)" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+            {best.length > 0 && (
+              <div style={s.bestHours}>
+                <span style={s.bestLabel}>Пиковые часы:</span>
+                {best.map(h => (
+                  <span key={h.hour} style={s.bestChip}>{h.hour}:00 ({h.count})</span>
+                ))}
+              </div>
+            )}
+          </>
+        ) : (
+          <div style={s.emptyState}>Нет данных</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ==================== COMPARE TAB ==================== */
+function CompareTab() {
+  const [searchVal, setSearchVal] = useState("");
+  const [channelsList, setChannelsList] = useState([]);
+  const [selected, setSelected] = useState([]);
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     fetchChannelsList().then(setChannelsList).catch(() => {});
   }, []);
 
-  const toggleCompareChannel = (username) => {
-    setCompareSelected(prev =>
+  const toggle = (username) => {
+    setSelected(prev =>
       prev.includes(username) ? prev.filter(u => u !== username) : [...prev, username]
     );
   };
 
-  const runCompare = () => {
-    if (compareSelected.length < 2) return;
-    setCompareLoading(true);
-    fetchCompareChannels({ channels: compareSelected.join(",") })
-      .then(setCompareData)
-      .catch(console.error)
-      .finally(() => setCompareLoading(false));
-  };
-
   useEffect(() => {
-    if (compareSelected.length >= 2) runCompare();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [compareSelected]);
+    if (selected.length < 2) { setData([]); return; }
+    setLoading(true);
+    fetchCompareChannels({ channels: selected.join(",") })
+      .then(setData)
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [selected]);
 
-  if (loading) return <div style={styles.loading}>Загрузка статистики...</div>;
-  if (!stats) return <div style={styles.loading}>Ошибка загрузки</div>;
-
-  const subsList = showAll.subs ? stats.top_by_subscribers : stats.top_by_subscribers.slice(0, 15);
-  const viewsList = showAll.views ? stats.top_by_views : stats.top_by_views.slice(0, 15);
-  const erList = showAll.er ? (stats.top_by_er || []) : (stats.top_by_er || []).slice(0, 15);
-
-  const filteredCompareList = compareSearch
+  const filtered = searchVal
     ? channelsList.filter(ch =>
-        ch.username.toLowerCase().includes(compareSearch.toLowerCase()) ||
-        (ch.title && ch.title.toLowerCase().includes(compareSearch.toLowerCase()))
+        ch.username.toLowerCase().includes(searchVal.toLowerCase()) ||
+        (ch.title && ch.title.toLowerCase().includes(searchVal.toLowerCase()))
       )
     : channelsList;
 
-  const radarData = compareData.length > 0 ? (() => {
-    const maxSubs = Math.max(...compareData.map(c => c.tg_participants || c.subscribers || 1));
-    const maxViews = Math.max(...compareData.map(c => c.avg_views_30d || c.avg_views || 1));
-    const maxER = Math.max(...compareData.map(c => c.er_pct || 0.01));
-    const maxFreq = Math.max(...compareData.map(c => c.publish_frequency || 0.01));
-    const maxReactions = Math.max(...compareData.map(c => c.avg_reactions_30d || 0.01));
-
-    const metrics = ["Подписчики", "Просмотры", "ER", "Частота", "Реакции"];
-    return metrics.map((name, i) => {
+  const radarData = data.length > 0 ? (() => {
+    const mx = {
+      subs: Math.max(...data.map(c => c.tg_participants || c.subscribers || 1)),
+      views: Math.max(...data.map(c => c.avg_views_30d || c.avg_views || 1)),
+      er: Math.max(...data.map(c => c.er_pct || 0.01)),
+      freq: Math.max(...data.map(c => c.publish_frequency || 0.01)),
+      react: Math.max(...data.map(c => c.avg_reactions_30d || 0.01)),
+    };
+    return ["Подписчики", "Просмотры", "ER", "Частота", "Реакции"].map((name, i) => {
       const point = { metric: name };
-      compareData.forEach(ch => {
+      data.forEach(ch => {
         const vals = [
-          ((ch.tg_participants || ch.subscribers || 0) / maxSubs) * 100,
-          ((ch.avg_views_30d || ch.avg_views || 0) / maxViews) * 100,
-          ((ch.er_pct || 0) / maxER) * 100,
-          ((ch.publish_frequency || 0) / maxFreq) * 100,
-          ((ch.avg_reactions_30d || 0) / maxReactions) * 100,
+          ((ch.tg_participants || ch.subscribers || 0) / mx.subs) * 100,
+          ((ch.avg_views_30d || ch.avg_views || 0) / mx.views) * 100,
+          ((ch.er_pct || 0) / mx.er) * 100,
+          ((ch.publish_frequency || 0) / mx.freq) * 100,
+          ((ch.avg_reactions_30d || 0) / mx.react) * 100,
         ];
         point[ch.username] = Math.round(vals[i]);
       });
@@ -124,341 +568,126 @@ export default function StatsView() {
   })() : [];
 
   return (
-    <div style={styles.container}>
-      {/* Tab bar */}
-      <div style={styles.tabBar}>
-        {[
-          { id: "overview", label: "Обзор", icon: <Layers size={14} /> },
-          { id: "hours", label: "Время публикаций", icon: <Clock size={14} /> },
-          { id: "compare", label: "Сравнение каналов", icon: <GitCompare size={14} /> },
-        ].map(t => (
-          <button
-            key={t.id}
-            style={{ ...styles.tab, ...(tab === t.id ? styles.tabActive : {}) }}
-            onClick={() => setTab(t.id)}
-          >
-            {t.icon} {t.label}
-          </button>
-        ))}
+    <div style={s.tabContent}>
+      {/* Selector */}
+      <div style={s.card}>
+        <h3 style={s.cardTitle}><GitCompare size={16} /> Сравнение каналов</h3>
+        <div style={s.compareSearch}>
+          <Search size={14} color="var(--tg-text-muted)" />
+          <input style={s.compareInput} placeholder="Найти канал..."
+            value={searchVal} onChange={e => setSearchVal(e.target.value)} />
+          {searchVal && (
+            <button style={s.compareClear} onClick={() => setSearchVal("")}>
+              <X size={12} />
+            </button>
+          )}
+        </div>
+        {selected.length > 0 && (
+          <div style={s.chipRow}>
+            {selected.map(u => (
+              <span key={u} style={s.chip}>
+                @{u}
+                <button style={s.chipX} onClick={() => toggle(u)}><X size={10} /></button>
+              </span>
+            ))}
+          </div>
+        )}
+        <div style={s.compareList}>
+          {filtered.slice(0, 30).map(ch => {
+            const active = selected.includes(ch.username);
+            return (
+              <button key={ch.username}
+                style={{ ...s.compareItem, ...(active ? s.compareItemActive : {}) }}
+                onClick={() => toggle(ch.username)}>
+                <span style={s.compareCheck}>{active ? "✓" : ""}</span>
+                @{ch.username}
+                {ch.title && <span style={s.compareItemTitle}>{ch.title}</span>}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      {/* Overview */}
-      {tab === "overview" && (
+      {loading && <div style={s.emptyState}>Загрузка...</div>}
+
+      {data.length >= 2 && (
         <>
-          <div style={styles.kpiRow}>
-            <KPI icon={<Layers size={20} />} label="Каналов" value={stats.total_channels} color="var(--tg-accent)" />
-            <KPI icon={<Users size={20} />} label="Ср. подписчиков" value={formatNum(stats.avg_subscribers)} color="var(--tg-blue)" />
-            <KPI icon={<Eye size={20} />} label="Ср. просмотров" value={formatNum(stats.avg_views)} color="var(--tg-green)" />
-            <KPI icon={<TrendingUp size={20} />} label="Ср. ER" value={(stats.avg_er || 0).toFixed(3) + "%"} color="var(--tg-orange)" />
+          <div style={s.card}>
+            <h3 style={s.cardTitle}>Радар-сравнение</h3>
+            <ResponsiveContainer width="100%" height={350}>
+              <RadarChart data={radarData}>
+                <PolarGrid stroke="var(--tg-border)" />
+                <PolarAngleAxis dataKey="metric" tick={{ fill: "var(--tg-text-secondary)", fontSize: 12 }} />
+                <PolarRadiusAxis tick={false} axisLine={false} />
+                {data.map((ch, i) => (
+                  <Radar key={ch.username} name={ch.title || ch.username}
+                    dataKey={ch.username} stroke={COLORS[i % COLORS.length]}
+                    fill={COLORS[i % COLORS.length]} fillOpacity={0.15} strokeWidth={2} />
+                ))}
+                <Tooltip contentStyle={tooltipStyle} />
+              </RadarChart>
+            </ResponsiveContainer>
+            <div style={s.radarLegend}>
+              {data.map((ch, i) => (
+                <span key={ch.username} style={{ ...s.radarLegendItem, color: COLORS[i % COLORS.length] }}>
+                  <div style={{ width: 10, height: 10, borderRadius: 3, background: COLORS[i % COLORS.length] }} />
+                  {ch.title || ch.username}
+                </span>
+              ))}
+            </div>
           </div>
 
-          <div style={styles.kpiRow}>
-            <KPI icon={<TrendingUp size={20} />} label="Ср. ERR" value={(stats.avg_err || 0).toFixed(3) + "%"} color="var(--tg-accent)" />
-            <KPI icon={<BarChart3 size={20} />} label="Ср. видимость" value={(stats.avg_visibility || 0).toFixed(1) + "%"} color="var(--tg-green)" />
-            <KPI icon={<Activity size={20} />} label="Ср. частота" value={(stats.avg_frequency || 0).toFixed(1) + "/день"} color="var(--tg-blue)" />
-            <KPI icon={<BarChart3 size={20} />} label="Ср. стабильность" value={(stats.avg_stability || 0).toFixed(0) + "%"} color="var(--tg-orange)" />
-          </div>
-
-          <div style={styles.kpiRow}>
-            <KPI icon={<Megaphone size={20} />} label="Ср. реклама" value={(stats.avg_ad_pct || 0).toFixed(1) + "%"} color="var(--tg-orange)" />
-            <KPI icon={<AlertTriangle size={20} />} label="Ср. гемблинг" value={(stats.avg_gambling_pct || 0).toFixed(1) + "%"} color="var(--tg-red)" />
-            <KPI icon={<MessageSquare size={20} />} label="С чатом" value={stats.channels_with_chat || 0} color="var(--tg-accent)" />
-            <KPI icon={<Calendar size={20} />} label="Ср. возраст" value={
-              (stats.avg_channel_age_days || 0) > 365
-                ? Math.floor(stats.avg_channel_age_days / 365) + " лет"
-                : (stats.avg_channel_age_days || 0) + " дней"
-            } color="var(--tg-blue)" />
-          </div>
-
-          {/* Types pie */}
-          {stats.types.length > 0 && (
-            <div style={styles.chartCard}>
-              <h3 style={styles.chartTitle}>Типы каналов</h3>
-              <div style={styles.pieRow}>
-                <ResponsiveContainer width="50%" height={260}>
-                  <PieChart>
-                    <Pie data={stats.types} dataKey="count" nameKey="type" cx="50%" cy="50%"
-                      innerRadius={60} outerRadius={100} stroke="var(--tg-bg-secondary)" strokeWidth={3}>
-                      {stats.types.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                    </Pie>
-                    <Tooltip contentStyle={tooltipStyle} formatter={(val, name) => [val, name]} />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div style={styles.legend}>
-                  {stats.types.map((t, i) => (
-                    <div key={i} style={styles.legendItem}>
-                      <div style={{ ...styles.legendDot, background: COLORS[i % COLORS.length] }} />
-                      <span style={styles.legendText}>{t.type}</span>
-                      <span style={styles.legendCount}>{t.count}</span>
-                    </div>
+          <div style={s.card}>
+            <h3 style={s.cardTitle}>Детальное сравнение</h3>
+            <div style={{ overflowX: "auto" }}>
+              <table style={s.compareTable}>
+                <thead>
+                  <tr>
+                    <th style={s.cmpTh}>Метрика</th>
+                    {data.map(ch => <th key={ch.username} style={s.cmpTh}>{ch.title || ch.username}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    { label: "Подписчики", key: "tg_participants", alt: "subscribers", fmt: formatNum },
+                    { label: "Ср. просмотры", key: "avg_views_30d", alt: "avg_views", fmt: formatNum },
+                    { label: "ER %", key: "er_pct", fmt: v => (v || 0).toFixed(3) + "%" },
+                    { label: "ERR %", key: "err_pct", fmt: v => (v || 0).toFixed(3) + "%" },
+                    { label: "Видимость %", key: "visibility_pct", fmt: v => (v || 0).toFixed(1) + "%" },
+                    { label: "Постов/мес", key: "posts_30d", fmt: v => v || 0 },
+                    { label: "Частота/день", key: "publish_frequency", fmt: v => (v || 0).toFixed(1) },
+                    { label: "Стабильность %", key: "publish_stability", fmt: v => (v || 0).toFixed(0) + "%" },
+                    { label: "Ср. реакции", key: "avg_reactions_30d", fmt: v => (v || 0).toFixed(1) },
+                    { label: "Ср. репосты", key: "avg_forwards_30d", fmt: v => (v || 0).toFixed(1) },
+                    { label: "Возраст (дней)", key: "channel_age_days", fmt: v => v || 0 },
+                    { label: "Реклама %", key: "ad_pct_30d", fmt: v => (v || 0).toFixed(1) + "%" },
+                  ].map(row => (
+                    <tr key={row.label}>
+                      <td style={s.cmpTdLabel}>{row.label}</td>
+                      {data.map(ch => (
+                        <td key={ch.username} style={s.cmpTd}>
+                          {row.fmt(ch[row.key] || (row.alt ? ch[row.alt] : 0))}
+                        </td>
+                      ))}
+                    </tr>
                   ))}
-                </div>
-              </div>
+                </tbody>
+              </table>
             </div>
-          )}
-
-          {/* Top by ER */}
-          {erList.length > 0 && (
-            <div style={styles.chartCard}>
-              <div style={styles.chartHeader}>
-                <h3 style={styles.chartTitle}>Топ по вовлечённости (ER)</h3>
-                {(stats.top_by_er || []).length > 15 && (
-                  <button style={styles.showAllBtn} onClick={() => setShowAll(p => ({ ...p, er: !p.er }))}>
-                    {showAll.er ? "Свернуть" : "Показать все"}
-                  </button>
-                )}
-              </div>
-              <ResponsiveContainer width="100%" height={erList.length * 34 + 40}>
-                <BarChart data={erList} layout="vertical" margin={{ left: 10, right: 20 }}>
-                  <XAxis type="number" tick={{ fill: "var(--tg-text-muted)", fontSize: 11 }} tickFormatter={v => v.toFixed(2) + "%"} />
-                  <YAxis dataKey="username" type="category" width={130}
-                    tick={{ fill: "var(--tg-text-secondary)", fontSize: 11 }}
-                    tickFormatter={v => "@" + (v.length > 16 ? v.slice(0, 16) + "..." : v)} />
-                  <Tooltip contentStyle={tooltipStyle} formatter={(val) => [val.toFixed(3) + "%", "ER"]} />
-                  <Bar dataKey="er_pct" fill="var(--tg-green)" radius={[0, 6, 6, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-
-          {/* Top by subscribers */}
-          <div style={styles.chartCard}>
-            <div style={styles.chartHeader}>
-              <h3 style={styles.chartTitle}>Топ по подписчикам ({stats.top_by_subscribers.length})</h3>
-              {stats.top_by_subscribers.length > 15 && (
-                <button style={styles.showAllBtn} onClick={() => setShowAll(p => ({ ...p, subs: !p.subs }))}>
-                  {showAll.subs ? "Свернуть" : "Показать все"}
-                </button>
-              )}
-            </div>
-            <ResponsiveContainer width="100%" height={subsList.length * 34 + 40}>
-              <BarChart data={subsList} layout="vertical" margin={{ left: 10, right: 20 }}>
-                <XAxis type="number" tick={{ fill: "var(--tg-text-muted)", fontSize: 11 }} tickFormatter={formatNum} />
-                <YAxis dataKey="username" type="category" width={130}
-                  tick={{ fill: "var(--tg-text-secondary)", fontSize: 11 }}
-                  tickFormatter={v => "@" + (v.length > 16 ? v.slice(0, 16) + "..." : v)} />
-                <Tooltip contentStyle={tooltipStyle} formatter={(val) => [formatNum(val), "Подписчики"]} />
-                <Bar dataKey="subscribers" fill="var(--tg-accent)" radius={[0, 6, 6, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* Top by views */}
-          <div style={styles.chartCard}>
-            <div style={styles.chartHeader}>
-              <h3 style={styles.chartTitle}>Топ по просмотрам ({stats.top_by_views.length})</h3>
-              {stats.top_by_views.length > 15 && (
-                <button style={styles.showAllBtn} onClick={() => setShowAll(p => ({ ...p, views: !p.views }))}>
-                  {showAll.views ? "Свернуть" : "Показать все"}
-                </button>
-              )}
-            </div>
-            <ResponsiveContainer width="100%" height={viewsList.length * 34 + 40}>
-              <BarChart data={viewsList} layout="vertical" margin={{ left: 10, right: 20 }}>
-                <XAxis type="number" tick={{ fill: "var(--tg-text-muted)", fontSize: 11 }} tickFormatter={formatNum} />
-                <YAxis dataKey="username" type="category" width={130}
-                  tick={{ fill: "var(--tg-text-secondary)", fontSize: 11 }}
-                  tickFormatter={v => "@" + (v.length > 16 ? v.slice(0, 16) + "..." : v)} />
-                <Tooltip contentStyle={tooltipStyle} formatter={(val) => [formatNum(val), "Просмотры"]} />
-                <Bar dataKey="avg_views" fill="var(--tg-purple)" radius={[0, 6, 6, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
           </div>
         </>
-      )}
-
-      {/* Posting hours tab */}
-      {tab === "hours" && (
-        <div style={styles.chartCard}>
-          <h3 style={styles.chartTitle}>
-            <Clock size={16} /> Лучшее время публикации
-          </h3>
-          <p style={styles.chartSubtitle}>
-            {favorites.length > 0
-              ? `По избранным каналам (${favorites.length})`
-              : "По всем каналам"}
-          </p>
-          {hoursLoading ? (
-            <div style={styles.loading}>Загрузка...</div>
-          ) : (
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={hours} margin={{ left: 0, right: 10 }}>
-                <XAxis
-                  dataKey="hour"
-                  tick={{ fill: "var(--tg-text-secondary)", fontSize: 11 }}
-                  tickFormatter={h => `${h}:00`}
-                />
-                <YAxis tick={{ fill: "var(--tg-text-muted)", fontSize: 11 }} />
-                <Tooltip
-                  contentStyle={tooltipStyle}
-                  formatter={(val) => [val, "Постов"]}
-                  labelFormatter={(h) => `${h}:00 — ${h}:59`}
-                />
-                <Bar dataKey="count" fill="var(--tg-accent)" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-          {hours.length > 0 && (() => {
-            const best = [...hours].sort((a, b) => b.count - a.count).slice(0, 3);
-            return (
-              <div style={styles.bestHours}>
-                <span style={styles.bestHoursLabel}>Пиковые часы:</span>
-                {best.map(h => (
-                  <span key={h.hour} style={styles.bestHourChip}>{h.hour}:00 ({h.count} постов)</span>
-                ))}
-              </div>
-            );
-          })()}
-        </div>
-      )}
-
-      {/* Compare tab */}
-      {tab === "compare" && (
-        <div style={styles.compareSection}>
-          <div style={styles.compareSelector}>
-            <h3 style={styles.chartTitle}>
-              <GitCompare size={16} /> Сравнение каналов
-            </h3>
-            <div style={styles.compareSearch}>
-              <Search size={14} color="var(--tg-text-muted)" />
-              <input
-                style={styles.compareInput}
-                placeholder="Найти канал..."
-                value={compareSearch}
-                onChange={e => setCompareSearch(e.target.value)}
-              />
-              {compareSearch && (
-                <button style={styles.compareClear} onClick={() => setCompareSearch("")}>
-                  <X size={12} />
-                </button>
-              )}
-            </div>
-
-            {/* Selected chips */}
-            {compareSelected.length > 0 && (
-              <div style={styles.selectedChips}>
-                {compareSelected.map(u => (
-                  <span key={u} style={styles.selectedChip}>
-                    @{u}
-                    <button style={styles.chipRemove} onClick={() => toggleCompareChannel(u)}>
-                      <X size={10} />
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-
-            <div style={styles.compareList}>
-              {filteredCompareList.slice(0, 30).map(ch => {
-                const active = compareSelected.includes(ch.username);
-                return (
-                  <button
-                    key={ch.username}
-                    style={{ ...styles.compareItem, ...(active ? styles.compareItemActive : {}) }}
-                    onClick={() => toggleCompareChannel(ch.username)}
-                  >
-                    <span style={styles.compareCheck}>{active ? "✓" : ""}</span>
-                    @{ch.username}
-                    {ch.title && <span style={styles.compareTitle}>{ch.title}</span>}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {compareLoading && <div style={styles.loading}>Загрузка...</div>}
-
-          {compareData.length >= 2 && (
-            <>
-              {/* Radar */}
-              <div style={styles.chartCard}>
-                <h3 style={styles.chartTitle}>Радар-сравнение</h3>
-                <ResponsiveContainer width="100%" height={350}>
-                  <RadarChart data={radarData}>
-                    <PolarGrid stroke="var(--tg-border)" />
-                    <PolarAngleAxis dataKey="metric" tick={{ fill: "var(--tg-text-secondary)", fontSize: 12 }} />
-                    <PolarRadiusAxis tick={false} axisLine={false} />
-                    {compareData.map((ch, i) => (
-                      <Radar
-                        key={ch.username}
-                        name={ch.title || ch.username}
-                        dataKey={ch.username}
-                        stroke={COLORS[i % COLORS.length]}
-                        fill={COLORS[i % COLORS.length]}
-                        fillOpacity={0.15}
-                        strokeWidth={2}
-                      />
-                    ))}
-                    <Tooltip contentStyle={tooltipStyle} />
-                  </RadarChart>
-                </ResponsiveContainer>
-                <div style={styles.radarLegend}>
-                  {compareData.map((ch, i) => (
-                    <span key={ch.username} style={{ ...styles.radarLegendItem, color: COLORS[i % COLORS.length] }}>
-                      <div style={{ ...styles.legendDot, background: COLORS[i % COLORS.length] }} />
-                      {ch.title || ch.username}
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              {/* Comparison table */}
-              <div style={styles.chartCard}>
-                <h3 style={styles.chartTitle}>Детальное сравнение</h3>
-                <div style={styles.compareTableWrap}>
-                  <table style={styles.compareTable}>
-                    <thead>
-                      <tr>
-                        <th style={styles.compareTh}>Метрика</th>
-                        {compareData.map(ch => (
-                          <th key={ch.username} style={styles.compareTh}>
-                            {ch.title || ch.username}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {[
-                        { label: "Подписчики", key: "tg_participants", alt: "subscribers", fmt: formatNum },
-                        { label: "Ср. просмотры", key: "avg_views_30d", alt: "avg_views", fmt: formatNum },
-                        { label: "ER %", key: "er_pct", fmt: v => (v || 0).toFixed(3) + "%" },
-                        { label: "ERR %", key: "err_pct", fmt: v => (v || 0).toFixed(3) + "%" },
-                        { label: "Видимость %", key: "visibility_pct", fmt: v => (v || 0).toFixed(1) + "%" },
-                        { label: "Постов/мес", key: "posts_30d", fmt: v => v || 0 },
-                        { label: "Частота/день", key: "publish_frequency", fmt: v => (v || 0).toFixed(1) },
-                        { label: "Стабильность %", key: "publish_stability", fmt: v => (v || 0).toFixed(0) + "%" },
-                        { label: "Ср. реакции", key: "avg_reactions_30d", fmt: v => (v || 0).toFixed(1) },
-                        { label: "Ср. репосты", key: "avg_forwards_30d", fmt: v => (v || 0).toFixed(1) },
-                        { label: "Возраст (дней)", key: "channel_age_days", fmt: v => v || 0 },
-                        { label: "Реклама %", key: "ad_pct_30d", fmt: v => (v || 0).toFixed(1) + "%" },
-                      ].map(row => (
-                        <tr key={row.label}>
-                          <td style={styles.compareTdLabel}>{row.label}</td>
-                          {compareData.map(ch => (
-                            <td key={ch.username} style={styles.compareTd}>
-                              {row.fmt(ch[row.key] || (row.alt ? ch[row.alt] : 0))}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
       )}
     </div>
   );
 }
 
-function KPI({ icon, label, value, color }) {
+/* ==================== SUB-COMPONENTS ==================== */
+function FilterInput({ label, value, onChange, step }) {
   return (
-    <div style={styles.kpi}>
-      <div style={{ color, marginBottom: 6 }}>{icon}</div>
-      <div style={styles.kpiValue}>{value}</div>
-      <div style={styles.kpiLabel}>{label}</div>
+    <div style={s.filterField}>
+      <label style={s.filterLabel}>{label}</label>
+      <input style={s.filterInput} type="number" step={step || "1"}
+        value={value || ""} onChange={e => onChange(e.target.value)} />
     </div>
   );
 }
@@ -468,81 +697,197 @@ const tooltipStyle = {
   borderRadius: 8, fontSize: 12, color: "var(--tg-text)",
 };
 
-const styles = {
-  container: { display: "flex", flexDirection: "column", gap: 20 },
-  loading: { textAlign: "center", padding: 60, color: "var(--tg-text-secondary)" },
+const cellS = {
+  channelCell: { display: "flex", alignItems: "center", gap: 10 },
+  avatar: {
+    width: 36, height: 36, borderRadius: "50%",
+    background: "linear-gradient(135deg, #5ea5e5, #9b7cd5)",
+    display: "flex", alignItems: "center", justifyContent: "center",
+    fontWeight: 700, fontSize: 14, color: "#fff", flexShrink: 0, overflow: "hidden",
+  },
+  avatarImg: { width: 36, height: 36, borderRadius: "50%", objectFit: "cover" },
+  info: { display: "flex", flexDirection: "column", overflow: "hidden" },
+  name: {
+    fontSize: 13, fontWeight: 600, color: "var(--tg-text)",
+    whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+  },
+  username: { fontSize: 11, color: "var(--tg-text-muted)" },
+  numVal: { fontSize: 13, fontWeight: 500, color: "var(--tg-text)" },
+  categoryTag: {
+    fontSize: 11, color: "var(--tg-text-secondary)", padding: "2px 8px",
+    borderRadius: 4, background: "var(--tg-bg-input)", whiteSpace: "nowrap",
+  },
+  typeTag: {
+    fontSize: 11, color: "var(--tg-text-secondary)", padding: "2px 6px",
+    borderRadius: 4, background: "var(--tg-bg-input)",
+  },
+  muted: { fontSize: 12, color: "var(--tg-text-muted)" },
+  chatYes: { color: "var(--tg-green)", fontWeight: 700 },
+};
+
+const s = {
+  container: { display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" },
+
   tabBar: {
-    display: "flex",
-    gap: 4,
-    background: "var(--tg-bg-secondary)",
-    padding: 4,
-    borderRadius: 12,
+    display: "flex", gap: 4, padding: "8px 16px",
+    background: "var(--tg-bg-secondary)", borderBottom: "1px solid var(--tg-border)", flexShrink: 0,
   },
   tab: {
-    flex: 1,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    padding: "10px 16px",
-    border: "none",
-    borderRadius: 10,
-    background: "transparent",
-    color: "var(--tg-text-muted)",
-    fontSize: 13,
-    fontWeight: 500,
-    cursor: "pointer",
-    transition: "all 0.15s",
+    display: "flex", alignItems: "center", gap: 6, padding: "8px 16px",
+    border: "none", borderRadius: 10, background: "transparent",
+    color: "var(--tg-text-muted)", fontSize: 13, fontWeight: 500, cursor: "pointer",
   },
   tabActive: {
-    background: "var(--tg-accent-muted)",
-    color: "var(--tg-accent)",
-    fontWeight: 600,
+    background: "var(--tg-accent-muted)", color: "var(--tg-accent)", fontWeight: 600,
   },
-  kpiRow: { display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 },
-  kpi: {
-    background: "var(--tg-bg-panel)", border: "1px solid var(--tg-border)",
-    borderRadius: 12, padding: "20px 16px", textAlign: "center",
+
+  catalogContainer: { display: "flex", flexDirection: "column", flex: 1, overflow: "hidden" },
+
+  toolbar: {
+    display: "flex", alignItems: "center", justifyContent: "space-between",
+    padding: "10px 16px", borderBottom: "1px solid var(--tg-border)",
+    background: "var(--tg-bg-secondary)", flexShrink: 0, flexWrap: "wrap", gap: 8,
   },
-  kpiValue: { fontSize: 24, fontWeight: 800 },
-  kpiLabel: { fontSize: 11, color: "var(--tg-text-secondary)", marginTop: 4, textTransform: "uppercase", letterSpacing: 0.3 },
-  chartCard: {
+  toolbarLeft: { display: "flex", alignItems: "center", gap: 10 },
+  heading: { fontSize: 16, fontWeight: 700, color: "var(--tg-text)" },
+  totalBadge: {
+    fontSize: 12, color: "var(--tg-text-muted)", background: "var(--tg-bg-panel)",
+    padding: "2px 8px", borderRadius: 10, fontWeight: 600,
+  },
+  toolbarRight: { display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" },
+  searchWrap: {
+    display: "flex", alignItems: "center", gap: 8,
+    background: "var(--tg-bg-input)", border: "1px solid var(--tg-border)",
+    borderRadius: 10, padding: "6px 12px", minWidth: 200,
+  },
+  searchInput: {
+    flex: 1, background: "transparent", border: "none",
+    color: "var(--tg-text)", fontSize: 13, outline: "none",
+  },
+  searchClear: {
+    display: "flex", alignItems: "center", justifyContent: "center",
+    width: 18, height: 18, borderRadius: "50%", border: "none",
+    background: "var(--tg-bg-panel)", color: "var(--tg-text-muted)", cursor: "pointer",
+  },
+  toolBtn: {
+    display: "flex", alignItems: "center", gap: 6, padding: "7px 12px",
+    border: "1px solid var(--tg-border)", borderRadius: 8,
+    background: "var(--tg-bg-panel)", color: "var(--tg-text-secondary)",
+    fontSize: 12, fontWeight: 500, cursor: "pointer", whiteSpace: "nowrap",
+  },
+  toolBtnActive: {
+    background: "var(--tg-accent-muted)", color: "var(--tg-accent)", borderColor: "var(--tg-accent)",
+  },
+  filterBadge: {
+    background: "var(--tg-accent)", color: "#fff", fontSize: 10, fontWeight: 700,
+    padding: "1px 5px", borderRadius: 6, marginLeft: 2,
+  },
+
+  panelRow: {
+    display: "flex", alignItems: "center", gap: 10, padding: "8px 16px",
+    borderBottom: "1px solid var(--tg-border)", background: "var(--tg-bg-secondary)",
+    flexShrink: 0, flexWrap: "wrap",
+  },
+  panelLabel: { fontSize: 12, fontWeight: 600, color: "var(--tg-text-secondary)" },
+  panelChips: { display: "flex", gap: 4, flexWrap: "wrap" },
+  panelChip: {
+    padding: "4px 10px", borderRadius: 6, border: "1px solid var(--tg-border)",
+    background: "var(--tg-bg-panel)", color: "var(--tg-text-muted)",
+    fontSize: 11, fontWeight: 500, cursor: "pointer", transition: "all 0.15s",
+  },
+  panelChipActive: {
+    background: "var(--tg-accent-muted)", color: "var(--tg-accent)",
+    borderColor: "rgba(42,171,238,0.3)",
+  },
+
+  filterPanel: {
+    padding: "10px 16px", borderBottom: "1px solid var(--tg-border)",
+    background: "var(--tg-bg-secondary)", flexShrink: 0,
+  },
+  filterGrid: {
+    display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
+    gap: 8, marginBottom: 8,
+  },
+  filterField: { display: "flex", flexDirection: "column", gap: 2 },
+  filterLabel: {
+    fontSize: 10, fontWeight: 600, color: "var(--tg-text-muted)", textTransform: "uppercase",
+  },
+  filterInput: {
+    background: "var(--tg-bg-input)", color: "var(--tg-text)",
+    border: "1px solid var(--tg-border)", borderRadius: 6,
+    padding: "5px 8px", fontSize: 12, outline: "none",
+  },
+  filterBottom: {
+    display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+  },
+  filterSelect: {
+    background: "var(--tg-bg-input)", color: "var(--tg-text)",
+    border: "1px solid var(--tg-border)", borderRadius: 6,
+    padding: "5px 8px", fontSize: 12, outline: "none", cursor: "pointer",
+  },
+  filterCheckLabel: {
+    display: "flex", alignItems: "center", gap: 4,
+    fontSize: 12, color: "var(--tg-text-secondary)", cursor: "pointer",
+  },
+  resetBtn: {
+    display: "flex", alignItems: "center", gap: 4, padding: "5px 10px",
+    border: "none", borderRadius: 6, background: "var(--tg-red-muted)",
+    color: "var(--tg-red)", fontSize: 12, fontWeight: 500, cursor: "pointer",
+    marginLeft: "auto",
+  },
+
+  tableWrap: { flex: 1, overflowY: "auto", overflowX: "auto" },
+  table: { width: "100%", borderCollapse: "collapse", fontSize: 13 },
+  thNum: {
+    width: 40, textAlign: "center", padding: "10px 4px", fontSize: 11, fontWeight: 600,
+    color: "var(--tg-text-muted)", borderBottom: "1px solid var(--tg-border)",
+    position: "sticky", top: 0, background: "var(--tg-bg-secondary)", zIndex: 1,
+  },
+  thStar: {
+    width: 36, textAlign: "center", padding: "10px 4px",
+    borderBottom: "1px solid var(--tg-border)",
+    position: "sticky", top: 0, background: "var(--tg-bg-secondary)", zIndex: 1,
+  },
+  th: {
+    padding: "10px 12px", textAlign: "left", fontSize: 11, fontWeight: 600,
+    color: "var(--tg-text-muted)", textTransform: "uppercase", letterSpacing: 0.3,
+    borderBottom: "1px solid var(--tg-border)", whiteSpace: "nowrap",
+    position: "sticky", top: 0, background: "var(--tg-bg-secondary)", zIndex: 1,
+  },
+  thTitle: { minWidth: 220 },
+  thContent: { display: "flex", alignItems: "center", gap: 4 },
+  tr: {
+    cursor: "pointer", transition: "background 0.1s",
+    borderBottom: "1px solid rgba(255,255,255,0.03)",
+  },
+  tdNum: { textAlign: "center", padding: "8px 4px", fontSize: 12, color: "var(--tg-text-muted)" },
+  tdStar: { textAlign: "center", padding: "4px", verticalAlign: "middle" },
+  td: { padding: "8px 12px", verticalAlign: "middle" },
+  tdTitle: { minWidth: 220 },
+  loadingRow: { display: "flex", justifyContent: "center", padding: 20 },
+  spinner: {
+    width: 20, height: 20, border: "2px solid var(--tg-border)",
+    borderTopColor: "var(--tg-accent)", borderRadius: "50%", animation: "spin 0.7s linear infinite",
+  },
+
+  tabContent: { flex: 1, overflow: "auto", padding: 20, display: "flex", flexDirection: "column", gap: 20 },
+  card: {
     background: "var(--tg-bg-panel)", border: "1px solid var(--tg-border)",
     borderRadius: 12, padding: 24,
   },
-  chartHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 },
-  chartTitle: {
-    fontSize: 15, fontWeight: 600, display: "flex", alignItems: "center", gap: 8,
-  },
-  chartSubtitle: {
-    fontSize: 12, color: "var(--tg-text-muted)", marginTop: 4, marginBottom: 16,
-  },
-  showAllBtn: {
-    background: "var(--tg-accent-muted)", color: "var(--tg-accent)",
-    border: "1px solid rgba(94,165,229,0.3)", borderRadius: 6,
-    padding: "5px 12px", fontSize: 12, fontWeight: 500, cursor: "pointer",
-  },
-  pieRow: { display: "flex", alignItems: "center", gap: 20 },
-  legend: { display: "flex", flexDirection: "column", gap: 8, flex: 1 },
-  legendItem: { display: "flex", alignItems: "center", gap: 8, fontSize: 13 },
-  legendDot: { width: 10, height: 10, borderRadius: 3, flexShrink: 0 },
-  legendText: { color: "var(--tg-text-secondary)", flex: 1 },
-  legendCount: { fontWeight: 600, color: "var(--tg-text)" },
-  bestHours: {
-    display: "flex", alignItems: "center", gap: 8, marginTop: 16, flexWrap: "wrap",
-  },
-  bestHoursLabel: { fontSize: 12, fontWeight: 600, color: "var(--tg-text-secondary)" },
-  bestHourChip: {
+  cardTitle: { fontSize: 15, fontWeight: 600, display: "flex", alignItems: "center", gap: 8 },
+  cardSubtitle: { fontSize: 12, color: "var(--tg-text-muted)", marginTop: 4, marginBottom: 16 },
+  emptyState: { textAlign: "center", padding: 60, color: "var(--tg-text-secondary)" },
+
+  bestHours: { display: "flex", alignItems: "center", gap: 8, marginTop: 16, flexWrap: "wrap" },
+  bestLabel: { fontSize: 12, fontWeight: 600, color: "var(--tg-text-secondary)" },
+  bestChip: {
     padding: "4px 10px", borderRadius: 8, fontSize: 12, fontWeight: 500,
     background: "var(--tg-accent-muted)", color: "var(--tg-accent)",
   },
-  compareSection: { display: "flex", flexDirection: "column", gap: 20 },
-  compareSelector: {
-    background: "var(--tg-bg-panel)", border: "1px solid var(--tg-border)",
-    borderRadius: 12, padding: 20, display: "flex", flexDirection: "column", gap: 12,
-  },
+
   compareSearch: {
-    display: "flex", alignItems: "center", gap: 8,
+    display: "flex", alignItems: "center", gap: 8, marginTop: 12,
     background: "var(--tg-bg-input)", border: "1px solid var(--tg-border)",
     borderRadius: 10, padding: "6px 12px",
   },
@@ -555,20 +900,20 @@ const styles = {
     width: 18, height: 18, borderRadius: "50%", border: "none",
     background: "var(--tg-bg-panel)", color: "var(--tg-text-muted)", cursor: "pointer",
   },
-  selectedChips: { display: "flex", gap: 6, flexWrap: "wrap" },
-  selectedChip: {
+  chipRow: { display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 },
+  chip: {
     display: "inline-flex", alignItems: "center", gap: 4,
     padding: "3px 8px", borderRadius: 6, fontSize: 12, fontWeight: 500,
     background: "var(--tg-accent-muted)", color: "var(--tg-accent)",
   },
-  chipRemove: {
+  chipX: {
     display: "flex", alignItems: "center", justifyContent: "center",
     width: 14, height: 14, border: "none", background: "transparent",
     color: "var(--tg-accent)", cursor: "pointer",
   },
   compareList: {
     maxHeight: 200, overflowY: "auto", display: "flex", flexDirection: "column", gap: 1,
-    border: "1px solid var(--tg-border)", borderRadius: 8, padding: 3,
+    border: "1px solid var(--tg-border)", borderRadius: 8, padding: 3, marginTop: 8,
   },
   compareItem: {
     display: "flex", alignItems: "center", gap: 8, padding: "5px 8px",
@@ -576,32 +921,25 @@ const styles = {
     color: "var(--tg-text-secondary)", fontSize: 12, cursor: "pointer",
     textAlign: "left", width: "100%",
   },
-  compareItemActive: {
-    background: "var(--tg-accent-muted)", color: "var(--tg-accent)",
-  },
+  compareItemActive: { background: "var(--tg-accent-muted)", color: "var(--tg-accent)" },
   compareCheck: { width: 14, fontSize: 11, color: "var(--tg-accent)", fontWeight: 700 },
-  compareTitle: {
+  compareItemTitle: {
     fontSize: 11, color: "var(--tg-text-muted)", marginLeft: 4,
     whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
   },
   radarLegend: { display: "flex", gap: 16, marginTop: 12, flexWrap: "wrap" },
-  radarLegendItem: {
-    display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 500,
-  },
-  compareTableWrap: { overflowX: "auto" },
-  compareTable: {
-    width: "100%", borderCollapse: "collapse", fontSize: 13,
-  },
-  compareTh: {
+  radarLegendItem: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 500 },
+  compareTable: { width: "100%", borderCollapse: "collapse", fontSize: 13 },
+  cmpTh: {
     padding: "10px 12px", textAlign: "left", fontSize: 12, fontWeight: 600,
     color: "var(--tg-text-muted)", textTransform: "uppercase",
     borderBottom: "1px solid var(--tg-border)", whiteSpace: "nowrap",
   },
-  compareTdLabel: {
+  cmpTdLabel: {
     padding: "8px 12px", fontSize: 13, fontWeight: 500, color: "var(--tg-text-secondary)",
     borderBottom: "1px solid rgba(255,255,255,0.03)",
   },
-  compareTd: {
+  cmpTd: {
     padding: "8px 12px", fontSize: 14, fontWeight: 600, color: "var(--tg-text)",
     borderBottom: "1px solid rgba(255,255,255,0.03)",
   },

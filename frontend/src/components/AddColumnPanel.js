@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import {
-  X, Newspaper, Users, Zap, TrendingUp, Star, Filter,
-  Hash, AtSign, Eye,
+  X, Newspaper, Zap, TrendingUp, Star, Filter,
+  Search, Eye, Megaphone, Activity, ChevronRight, ChevronLeft,
+  Hash, Users, Globe,
 } from "lucide-react";
 import { fetchChannelsList, fetchCategories } from "../api";
 
@@ -17,45 +18,44 @@ const PRESETS = [
   {
     icon: <Newspaper size={20} />,
     title: "Все посты",
-    desc: "Все посты по дате",
+    desc: "Лента всех постов по дате",
     type: "posts",
     iconColor: "var(--tg-accent)",
     filters: { sort: "date", order: "desc" },
   },
   {
     icon: <Zap size={20} />,
-    title: "Вирусные посты",
-    desc: "Посты с макс. отклонением просмотров",
+    title: "Вирусные",
+    desc: "Посты с аномальным охватом",
     type: "viral",
     iconColor: "var(--tg-red)",
     filters: { sort: "views_dev", order: "desc" },
   },
   {
-    icon: <Hash size={20} />,
-    title: "По ключевым словам",
-    desc: "Фильтр постов по словам",
-    type: "keywords",
+    icon: <Megaphone size={20} />,
+    title: "Рекламные посты",
+    desc: "Рекламные креативы и Telegram Ads",
+    type: "ad_posts",
+    iconColor: "var(--tg-orange)",
+    filters: { sort: "date", order: "desc", only_ad: "1" },
+  },
+  {
+    icon: <Search size={20} />,
+    title: "Поиск по постам",
+    desc: "Поиск слов, фраз и упоминаний",
+    type: "post_search",
+    iconColor: "var(--tg-accent)",
+    filters: { sort: "date", order: "desc" },
+    needsSearch: true,
+  },
+  {
+    icon: <Activity size={20} />,
+    title: "Отслеживание событий",
+    desc: "Мониторинг слов, каналов и событий",
+    type: "tracking",
     iconColor: "var(--tg-green)",
     filters: { sort: "date", order: "desc" },
-    needsKeywords: true,
-  },
-  {
-    icon: <AtSign size={20} />,
-    title: "Упоминания",
-    desc: "Поиск упоминаний слова/бренда",
-    type: "mentions",
-    iconColor: "var(--tg-purple)",
-    filters: { sort: "date", order: "desc" },
-    needsKeywords: true,
-  },
-  {
-    icon: <Users size={20} />,
-    title: "Конкуренты",
-    desc: "Посты из выбранных каналов",
-    type: "competitors",
-    iconColor: "var(--tg-blue)",
-    filters: { sort: "date", order: "desc" },
-    needsChannels: true,
+    needsTracking: true,
   },
   {
     icon: <Eye size={20} />,
@@ -76,7 +76,7 @@ const PRESETS = [
   {
     icon: <Filter size={20} />,
     title: "Своя колонка",
-    desc: "Настрой любые фильтры",
+    desc: "Настрой любые фильтры вручную",
     type: "custom",
     iconColor: "var(--tg-text-muted)",
     filters: {},
@@ -85,15 +85,39 @@ const PRESETS = [
 
 export default function AddColumnPanel({ onAdd, onCancel }) {
   const [step, setStep] = useState("presets");
-  const [selectedPreset, setSelectedPreset] = useState(null);
+  const [, setSelectedPreset] = useState(null);
   const [customType, setCustomType] = useState("posts");
   const [customTitle, setCustomTitle] = useState("");
-  const [keywords, setKeywords] = useState("");
   const [channels, setChannels] = useState([]);
   const [selectedChannels, setSelectedChannels] = useState([]);
   const [chSearch, setChSearch] = useState("");
   const [categories, setCategories] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState("");
+
+  // Search wizard state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchScope, setSearchScope] = useState("all");
+  const [searchScopeChannels, setSearchScopeChannels] = useState([]);
+  const [searchCategory, setSearchCategory] = useState("");
+  const [searchDateFrom, setSearchDateFrom] = useState("");
+  const [searchDateTo, setSearchDateTo] = useState("");
+  const [searchSort, setSearchSort] = useState("date");
+  const [searchOrder, setSearchOrder] = useState("desc");
+  const [searchOnlyPhoto, setSearchOnlyPhoto] = useState(false);
+  const [searchOnlyAd, setSearchOnlyAd] = useState(false);
+  const [searchMinViews, setSearchMinViews] = useState("");
+  const [searchMinReactions, setSearchMinReactions] = useState("");
+
+  // Tracking wizard state
+  const [trackStep, setTrackStep] = useState(1);
+  const [trackType, setTrackType] = useState("");
+  const [trackKeywords, setTrackKeywords] = useState("");
+  const [trackScope, setTrackScope] = useState("all");
+  const [trackScopeChannels, setTrackScopeChannels] = useState([]);
+  const [trackCountry, setTrackCountry] = useState("");
+  const [trackLanguage, setTrackLanguage] = useState("");
+  const [trackCategory, setTrackCategory] = useState("");
+  const [trackMinSubs, setTrackMinSubs] = useState("");
 
   useEffect(() => {
     fetchChannelsList().then(setChannels).catch(() => {});
@@ -105,9 +129,36 @@ export default function AddColumnPanel({ onAdd, onCancel }) {
       setStep("custom");
       return;
     }
-    if (preset.needsKeywords || preset.needsChannels) {
+    if (preset.needsSearch) {
       setSelectedPreset(preset);
-      setStep("configure");
+      setStep("search");
+      setSearchQuery("");
+      setSearchScope("all");
+      setSearchScopeChannels([]);
+      setSearchCategory("");
+      setSearchDateFrom("");
+      setSearchDateTo("");
+      setSearchSort("date");
+      setSearchOrder("desc");
+      setSearchOnlyPhoto(false);
+      setSearchOnlyAd(false);
+      setSearchMinViews("");
+      setSearchMinReactions("");
+      setChSearch("");
+      return;
+    }
+    if (preset.needsTracking) {
+      setSelectedPreset(preset);
+      setStep("tracking");
+      setTrackStep(1);
+      setTrackType("");
+      setTrackKeywords("");
+      setTrackScope("all");
+      setTrackScopeChannels([]);
+      setTrackCountry("");
+      setTrackLanguage("");
+      setTrackCategory("");
+      setTrackMinSubs("");
       return;
     }
     onAdd({
@@ -117,27 +168,63 @@ export default function AddColumnPanel({ onAdd, onCancel }) {
     });
   };
 
-  const handleConfigureAdd = () => {
-    if (!selectedPreset) return;
-    const col = {
-      title: selectedPreset.title,
-      type: selectedPreset.type,
-      filters: { ...selectedPreset.filters },
-    };
+  const handleSearchAdd = () => {
+    if (!searchQuery.trim()) return;
+    const filters = { sort: searchSort, order: searchOrder };
+    if (searchScope === "include" && searchScopeChannels.length > 0) {
+      filters.channels = searchScopeChannels.join(",");
+    }
+    if (searchCategory) filters.category = searchCategory;
+    if (searchDateFrom) filters.date_from = searchDateFrom;
+    if (searchDateTo) filters.date_to = searchDateTo;
+    if (searchOnlyPhoto) filters.only_photo = "1";
+    if (searchOnlyAd) filters.only_ad = "1";
+    if (searchMinViews) filters.min_p_views = searchMinViews;
+    if (searchMinReactions) filters.min_p_reactions = searchMinReactions;
 
-    if (selectedPreset.needsKeywords) {
-      if (!keywords.trim()) return;
-      col.keywords = keywords.trim();
-      col.title = `${selectedPreset.type === "mentions" ? "@" : "#"} ${keywords.trim()}`;
+    onAdd({
+      title: `Поиск: ${searchQuery.trim()}`,
+      type: "post_search",
+      filters,
+      keywords: searchQuery.trim(),
+    });
+  };
+
+  const handleTrackingAdd = () => {
+    const filters = { sort: "date", order: "desc" };
+    let title = "Трекинг";
+
+    if (trackType === "words") {
+      if (!trackKeywords.trim()) return;
+      title = `🔍 ${trackKeywords.trim()}`;
+    } else if (trackType === "channels") {
+      if (trackScopeChannels.length === 0) return;
+      title = `📡 Трекинг (${trackScopeChannels.length} кан.)`;
     }
 
-    if (selectedPreset.needsChannels) {
-      if (selectedChannels.length === 0) return;
-      col.competitorChannels = selectedChannels.join(",");
-      col.title = `Конкуренты (${selectedChannels.length})`;
+    if (trackScope === "include" && trackScopeChannels.length > 0) {
+      filters.channels = trackScopeChannels.join(",");
     }
+    if (trackCountry) filters.country = trackCountry;
+    if (trackLanguage) filters.language = trackLanguage;
+    if (trackCategory) filters.category = trackCategory;
+    if (trackMinSubs) filters.min_subs = trackMinSubs;
 
-    onAdd(col);
+    onAdd({
+      title,
+      type: "tracking",
+      filters,
+      keywords: trackType === "words" ? trackKeywords.trim() : undefined,
+      competitorChannels: trackType === "channels" ? trackScopeChannels.join(",") : undefined,
+      trackingConfig: {
+        trackType,
+        trackScope,
+        trackCountry,
+        trackLanguage,
+        trackCategory,
+        trackMinSubs,
+      },
+    });
   };
 
   const handleCustomAdd = () => {
@@ -158,68 +245,111 @@ export default function AddColumnPanel({ onAdd, onCancel }) {
       )
     : channels;
 
+  const trackFiltered = chSearch
+    ? channels.filter(ch =>
+        ch.username.toLowerCase().includes(chSearch.toLowerCase()) ||
+        (ch.title && ch.title.toLowerCase().includes(chSearch.toLowerCase()))
+      )
+    : channels;
+
+  const canTrackNext = () => {
+    if (trackStep === 1) return !!trackType;
+    if (trackStep === 2) {
+      if (trackType === "words") return !!trackKeywords.trim();
+      if (trackType === "channels") return trackScopeChannels.length > 0;
+    }
+    return true;
+  };
+
   return (
-    <div style={styles.column}>
-      <div style={styles.header}>
-        <span style={styles.headerTitle}>
-          {step === "presets" ? "Добавить колонку" : step === "configure" ? selectedPreset?.title : "Своя колонка"}
+    <div style={st.column}>
+      <div style={st.header}>
+        <span style={st.headerTitle}>
+          {step === "presets" && "Добавить колонку"}
+          {step === "search" && "Поиск по постам"}
+          {step === "tracking" && "Отслеживание событий"}
+          {step === "custom" && "Своя колонка"}
         </span>
-        <button style={styles.closeBtn} onClick={onCancel}>
-          <X size={16} />
-        </button>
+        <button style={st.closeBtn} onClick={onCancel}><X size={16} /></button>
       </div>
 
+      {/* ===== PRESETS ===== */}
       {step === "presets" && (
-        <div style={styles.presetsList}>
+        <div style={st.presetsList}>
           {PRESETS.map((p, i) => (
-            <button key={i} style={styles.presetBtn} onClick={() => handlePreset(p)}>
-              <div style={{ ...styles.presetIcon, background: (p.iconColor || "var(--tg-accent)") + "18", color: p.iconColor || "var(--tg-accent)" }}>
+            <button key={i} style={st.presetBtn} onClick={() => handlePreset(p)}>
+              <div style={{ ...st.presetIcon, background: (p.iconColor || "var(--tg-accent)") + "18", color: p.iconColor }}>
                 {p.icon}
               </div>
-              <div style={styles.presetInfo}>
-                <span style={styles.presetTitle}>{p.title}</span>
-                <span style={styles.presetDesc}>{p.desc}</span>
+              <div style={st.presetInfo}>
+                <span style={st.presetTitle}>{p.title}</span>
+                <span style={st.presetDesc}>{p.desc}</span>
               </div>
             </button>
           ))}
         </div>
       )}
 
-      {step === "configure" && selectedPreset && (
-        <div style={styles.customForm}>
-          {selectedPreset.needsKeywords && (
-            <div style={styles.field}>
-              <label style={styles.label}>
-                {selectedPreset.type === "mentions" ? "Слово / бренд для поиска" : "Ключевые слова"}
-              </label>
-              <input
-                style={styles.input}
-                value={keywords}
-                onChange={e => setKeywords(e.target.value)}
-                placeholder={selectedPreset.type === "mentions" ? "Например: ChatGPT" : "Например: нейросеть"}
-                autoFocus
-              />
-              <span style={styles.hint}>Поиск по тексту постов</span>
-            </div>
-          )}
+      {/* ===== SEARCH WIZARD ===== */}
+      {step === "search" && (
+        <div style={st.form}>
+          {/* Query */}
+          <div style={st.field}>
+            <label style={st.label}>Поисковый запрос</label>
+            <input style={st.input} value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Слово, фраза или @упоминание" autoFocus />
+            <span style={st.hint}>Поиск по тексту постов во всех каналах</span>
+          </div>
 
-          {selectedPreset.needsChannels && (
-            <div style={styles.field}>
-              <label style={styles.label}>
-                Выберите каналы-конкуренты {selectedChannels.length > 0 && `(${selectedChannels.length})`}
+          <div style={st.divider} />
+
+          {/* Scope */}
+          <div style={st.sectionTitle}>Искать в:</div>
+          <div style={st.scopeOptions}>
+            <button style={{ ...st.scopeBtn, ...(searchScope === "all" ? st.scopeBtnActive : {}) }}
+              onClick={() => setSearchScope("all")}>
+              <Globe size={14} />
+              <span>Во всех каналах</span>
+            </button>
+            <button style={{ ...st.scopeBtn, ...(searchScope === "include" ? st.scopeBtnActive : {}) }}
+              onClick={() => setSearchScope("include")}>
+              <Search size={14} />
+              <span>Только в определённых каналах</span>
+            </button>
+          </div>
+
+          {searchScope === "include" && (
+            <div style={st.field}>
+              <label style={st.label}>
+                Каналы {searchScopeChannels.length > 0 && `(${searchScopeChannels.length})`}
               </label>
-              <input style={styles.input} placeholder="Поиск каналов..."
+              <input style={st.input} placeholder="Поиск каналов..."
                 value={chSearch} onChange={e => setChSearch(e.target.value)} />
-              <div style={styles.chList}>
-                {filtered.slice(0, 50).map(ch => {
-                  const active = selectedChannels.includes(ch.username);
+              {searchScopeChannels.length > 0 && (
+                <div style={st.chipRow}>
+                  {searchScopeChannels.map(u => (
+                    <span key={u} style={st.chip}>
+                      @{u}
+                      <button style={st.chipX} onClick={() => setSearchScopeChannels(p => p.filter(x => x !== u))}>
+                        <X size={10} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div style={st.chList}>
+                {filtered.slice(0, 40).map(ch => {
+                  const active = searchScopeChannels.includes(ch.username);
                   return (
                     <button key={ch.username}
-                      style={{ ...styles.chItem, ...(active ? styles.chItemActive : {}) }}
-                      onClick={() => setSelectedChannels(prev =>
+                      style={{ ...st.chItem, ...(active ? st.chItemActive : {}) }}
+                      onClick={() => setSearchScopeChannels(prev =>
                         active ? prev.filter(u => u !== ch.username) : [...prev, ch.username]
                       )}>
-                      {active ? "✓ " : ""}@{ch.username}
+                      <span style={st.chCheck}>{active ? "✓" : ""}</span>
+                      @{ch.username}
+                      {ch.title && <span style={st.chTitle}>{ch.title}</span>}
                     </button>
                   );
                 })}
@@ -227,40 +357,15 @@ export default function AddColumnPanel({ onAdd, onCancel }) {
             </div>
           )}
 
-          <button style={styles.addBtn} onClick={handleConfigureAdd}>
-            Добавить колонку
-          </button>
-          <button style={styles.backBtn} onClick={() => { setStep("presets"); setSelectedPreset(null); }}>
-            ← Назад к шаблонам
-          </button>
-        </div>
-      )}
+          <div style={st.divider} />
 
-      {step === "custom" && (
-        <div style={styles.customForm}>
-          <div style={styles.field}>
-            <label style={styles.label}>Название</label>
-            <input style={styles.input} value={customTitle}
-              onChange={e => setCustomTitle(e.target.value)}
-              placeholder="Моя колонка" />
-          </div>
-
-          <div style={styles.field}>
-            <label style={styles.label}>Тип</label>
-            <div style={styles.typeRow}>
-              <button style={{ ...styles.typeBtn, ...(customType === "posts" ? styles.typeBtnActive : {}) }}
-                onClick={() => setCustomType("posts")}>Посты</button>
-              <button style={{ ...styles.typeBtn, ...(customType === "feed" ? styles.typeBtnActive : {}) }}
-                onClick={() => setCustomType("feed")}>Каналы</button>
-            </div>
-          </div>
-
-          {customType === "posts" && categories.length > 0 && (
-            <div style={styles.field}>
-              <label style={styles.label}>Категория</label>
-              <select style={styles.select} value={selectedCategory}
-                onChange={e => setSelectedCategory(e.target.value)}>
-                <option value="">Все</option>
+          {/* Category */}
+          {categories.length > 0 && (
+            <div style={st.field}>
+              <label style={st.label}>Категория</label>
+              <select style={st.select} value={searchCategory}
+                onChange={e => setSearchCategory(e.target.value)}>
+                <option value="">Все категории</option>
                 {categories.map(c => (
                   <option key={c.name} value={c.name}>{c.name}</option>
                 ))}
@@ -268,226 +373,571 @@ export default function AddColumnPanel({ onAdd, onCancel }) {
             </div>
           )}
 
+          {/* Date range */}
+          <div style={st.field}>
+            <label style={st.label}>Период</label>
+            <div style={st.dateRow}>
+              <input style={st.dateInput} type="date" value={searchDateFrom}
+                onChange={e => setSearchDateFrom(e.target.value)} />
+              <span style={st.dateDash}>—</span>
+              <input style={st.dateInput} type="date" value={searchDateTo}
+                onChange={e => setSearchDateTo(e.target.value)} />
+            </div>
+          </div>
+
+          {/* Sort */}
+          <div style={st.field}>
+            <label style={st.label}>Сортировка</label>
+            <div style={st.sortRow}>
+              <select style={{ ...st.select, flex: 1 }} value={searchSort}
+                onChange={e => setSearchSort(e.target.value)}>
+                <option value="date">По дате</option>
+                <option value="views">По просмотрам</option>
+                <option value="reactions">По реакциям</option>
+                <option value="comments">По комментариям</option>
+                <option value="views_dev">Откл. просмотров</option>
+              </select>
+              <button style={st.orderToggle}
+                onClick={() => setSearchOrder(o => o === "desc" ? "asc" : "desc")}>
+                {searchOrder === "desc" ? "↓" : "↑"}
+              </button>
+            </div>
+          </div>
+
+          <div style={st.divider} />
+
+          {/* Filters */}
+          <div style={st.sectionTitle}>Дополнительные фильтры</div>
+
+          <div style={st.filtersGrid}>
+            <label style={st.filterChip}>
+              <input type="checkbox" checked={searchOnlyPhoto}
+                onChange={e => setSearchOnlyPhoto(e.target.checked)} />
+              Только с фото
+            </label>
+            <label style={st.filterChip}>
+              <input type="checkbox" checked={searchOnlyAd}
+                onChange={e => setSearchOnlyAd(e.target.checked)} />
+              Только реклама
+            </label>
+          </div>
+
+          <div style={st.rangeFilters}>
+            <div style={st.field}>
+              <label style={st.label}>Мин. просмотров</label>
+              <input style={st.input} type="number" value={searchMinViews}
+                onChange={e => setSearchMinViews(e.target.value)} placeholder="0" />
+            </div>
+            <div style={st.field}>
+              <label style={st.label}>Мин. реакций</label>
+              <input style={st.input} type="number" value={searchMinReactions}
+                onChange={e => setSearchMinReactions(e.target.value)} placeholder="0" />
+            </div>
+          </div>
+
+          {/* Actions */}
+          <button
+            style={{ ...st.addBtn, ...(searchQuery.trim() ? {} : { opacity: 0.4, cursor: "not-allowed" }) }}
+            onClick={handleSearchAdd}
+            disabled={!searchQuery.trim()}
+          >
+            <Search size={14} /> Создать поиск
+          </button>
+          <button style={st.backBtn} onClick={() => { setStep("presets"); setSelectedPreset(null); }}>
+            ← Назад к шаблонам
+          </button>
+        </div>
+      )}
+
+      {/* ===== TRACKING WIZARD ===== */}
+      {step === "tracking" && (
+        <div style={st.form}>
+          {/* Steps indicator */}
+          <div style={st.stepsBar}>
+            {[1, 2, 3].map(s => (
+              <div key={s} style={{ ...st.stepDot, ...(trackStep >= s ? st.stepDotActive : {}) }}>
+                {s}
+              </div>
+            ))}
+            <div style={st.stepsLabel}>
+              {trackStep === 1 && "Тип отслеживания"}
+              {trackStep === 2 && "Настройка"}
+              {trackStep === 3 && "Таргетинг"}
+            </div>
+          </div>
+
+          {/* Step 1: Choose type */}
+          {trackStep === 1 && (
+            <>
+              <div style={st.sectionTitle}>Выбрать тип отслеживания</div>
+              <button
+                style={{ ...st.trackTypeBtn, ...(trackType === "words" ? st.trackTypeBtnActive : {}) }}
+                onClick={() => setTrackType("words")}
+              >
+                <div style={{ ...st.trackTypeIcon, color: "var(--tg-accent)" }}>
+                  <Hash size={22} />
+                </div>
+                <div style={st.trackTypeInfo}>
+                  <span style={st.trackTypeTitle}>Слова и фразы</span>
+                  <span style={st.trackTypeDesc}>Мониторинг появления слов в постах каналов</span>
+                </div>
+                {trackType === "words" && <span style={st.checkMark}>✓</span>}
+              </button>
+              <button
+                style={{ ...st.trackTypeBtn, ...(trackType === "channels" ? st.trackTypeBtnActive : {}) }}
+                onClick={() => setTrackType("channels")}
+              >
+                <div style={{ ...st.trackTypeIcon, color: "var(--tg-green)" }}>
+                  <Users size={22} />
+                </div>
+                <div style={st.trackTypeInfo}>
+                  <span style={st.trackTypeTitle}>Каналы или чаты</span>
+                  <span style={st.trackTypeDesc}>Лента конкретных каналов в реальном времени</span>
+                </div>
+                {trackType === "channels" && <span style={st.checkMark}>✓</span>}
+              </button>
+            </>
+          )}
+
+          {/* Step 2: Configure */}
+          {trackStep === 2 && trackType === "words" && (
+            <>
+              <div style={st.sectionTitle}>Слова и фразы для мониторинга</div>
+              <div style={st.field}>
+                <label style={st.label}>Поисковый запрос</label>
+                <input style={st.input} value={trackKeywords}
+                  onChange={e => setTrackKeywords(e.target.value)}
+                  placeholder="Например: ChatGPT, нейросеть" autoFocus />
+                <span style={st.hint}>Можно указать несколько слов через запятую</span>
+              </div>
+
+              <div style={st.divider} />
+              <div style={st.sectionTitle}>Мониторить в:</div>
+
+              <div style={st.scopeOptions}>
+                <button style={{ ...st.scopeBtn, ...(trackScope === "all" ? st.scopeBtnActive : {}) }}
+                  onClick={() => setTrackScope("all")}>
+                  <Globe size={14} />
+                  <span>В любом канале</span>
+                </button>
+                <button style={{ ...st.scopeBtn, ...(trackScope === "include" ? st.scopeBtnActive : {}) }}
+                  onClick={() => setTrackScope("include")}>
+                  <Search size={14} />
+                  <span>Только в определённых каналах</span>
+                </button>
+                <button style={{ ...st.scopeBtn, ...(trackScope === "exclude" ? st.scopeBtnActive : {}) }}
+                  onClick={() => setTrackScope("exclude")}>
+                  <X size={14} />
+                  <span>Исключить каналы из поиска</span>
+                </button>
+              </div>
+
+              {(trackScope === "include" || trackScope === "exclude") && (
+                <div style={st.field}>
+                  <label style={st.label}>
+                    {trackScope === "include" ? "Искать только в" : "Исключить из поиска"}{" "}
+                    {trackScopeChannels.length > 0 && `(${trackScopeChannels.length})`}
+                  </label>
+                  <input style={st.input} placeholder="Поиск каналов..."
+                    value={chSearch} onChange={e => setChSearch(e.target.value)} />
+                  {trackScopeChannels.length > 0 && (
+                    <div style={st.chipRow}>
+                      {trackScopeChannels.map(u => (
+                        <span key={u} style={st.chip}>
+                          @{u}
+                          <button style={st.chipX} onClick={() => setTrackScopeChannels(p => p.filter(x => x !== u))}>
+                            <X size={10} />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div style={st.chList}>
+                    {trackFiltered.slice(0, 40).map(ch => {
+                      const active = trackScopeChannels.includes(ch.username);
+                      return (
+                        <button key={ch.username}
+                          style={{ ...st.chItem, ...(active ? st.chItemActive : {}) }}
+                          onClick={() => setTrackScopeChannels(prev =>
+                            active ? prev.filter(u => u !== ch.username) : [...prev, ch.username]
+                          )}>
+                          <span style={st.chCheck}>{active ? "✓" : ""}</span>
+                          @{ch.username}
+                          {ch.title && <span style={st.chTitle}>{ch.title}</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {trackStep === 2 && trackType === "channels" && (
+            <>
+              <div style={st.sectionTitle}>Выберите каналы для отслеживания</div>
+              <div style={st.field}>
+                <label style={st.label}>
+                  Каналы {trackScopeChannels.length > 0 && `(${trackScopeChannels.length})`}
+                </label>
+                <input style={st.input} placeholder="Поиск каналов..."
+                  value={chSearch} onChange={e => setChSearch(e.target.value)} />
+                {trackScopeChannels.length > 0 && (
+                  <div style={st.chipRow}>
+                    {trackScopeChannels.map(u => (
+                      <span key={u} style={st.chip}>
+                        @{u}
+                        <button style={st.chipX} onClick={() => setTrackScopeChannels(p => p.filter(x => x !== u))}>
+                          <X size={10} />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div style={st.chList}>
+                  {trackFiltered.slice(0, 40).map(ch => {
+                    const active = trackScopeChannels.includes(ch.username);
+                    return (
+                      <button key={ch.username}
+                        style={{ ...st.chItem, ...(active ? st.chItemActive : {}) }}
+                        onClick={() => setTrackScopeChannels(prev =>
+                          active ? prev.filter(u => u !== ch.username) : [...prev, ch.username]
+                        )}>
+                        <span style={st.chCheck}>{active ? "✓" : ""}</span>
+                        @{ch.username}
+                        {ch.title && <span style={st.chTitle}>{ch.title}</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Step 3: Targeting */}
+          {trackStep === 3 && (
+            <>
+              <div style={st.sectionTitle}>Таргетинг (опционально)</div>
+              <span style={st.hint}>Дополнительные параметры по каналам</span>
+
+              <div style={st.field}>
+                <label style={st.label}>Страна канала</label>
+                <select style={st.select} value={trackCountry} onChange={e => setTrackCountry(e.target.value)}>
+                  <option value="">Любая</option>
+                  <option value="russia">Россия</option>
+                  <option value="ukraine">Украина</option>
+                  <option value="usa">США</option>
+                  <option value="uzbekistan">Узбекистан</option>
+                  <option value="iran">Иран</option>
+                  <option value="india">Индия</option>
+                  <option value="turkey">Турция</option>
+                  <option value="international">Международный</option>
+                </select>
+              </div>
+
+              <div style={st.field}>
+                <label style={st.label}>Язык канала</label>
+                <select style={st.select} value={trackLanguage} onChange={e => setTrackLanguage(e.target.value)}>
+                  <option value="">Любой</option>
+                  <option value="ru">Русский</option>
+                  <option value="en">Английский</option>
+                  <option value="uz">Узбекский</option>
+                  <option value="fa">Фарси</option>
+                  <option value="ar">Арабский</option>
+                  <option value="tr">Турецкий</option>
+                  <option value="hi">Хинди</option>
+                </select>
+              </div>
+
+              <div style={st.field}>
+                <label style={st.label}>Категория канала</label>
+                <select style={st.select} value={trackCategory} onChange={e => setTrackCategory(e.target.value)}>
+                  <option value="">Все категории</option>
+                  {categories.map(c => (
+                    <option key={c.name} value={c.name}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={st.field}>
+                <label style={st.label}>Мин. кол-во подписчиков</label>
+                <input style={st.input} type="number" value={trackMinSubs}
+                  onChange={e => setTrackMinSubs(e.target.value)} placeholder="Например: 1000" />
+              </div>
+            </>
+          )}
+
+          {/* Tracking nav buttons */}
+          <div style={st.wizardNav}>
+            {trackStep > 1 ? (
+              <button style={st.wizardBackBtn} onClick={() => setTrackStep(p => p - 1)}>
+                <ChevronLeft size={14} /> Назад
+              </button>
+            ) : (
+              <button style={st.backBtn} onClick={() => { setStep("presets"); setSelectedPreset(null); }}>
+                ← К шаблонам
+              </button>
+            )}
+
+            {trackStep < 3 ? (
+              <button
+                style={{ ...st.wizardNextBtn, ...(canTrackNext() ? {} : st.wizardNextBtnDisabled) }}
+                onClick={() => canTrackNext() && setTrackStep(p => p + 1)}
+                disabled={!canTrackNext()}
+              >
+                Далее <ChevronRight size={14} />
+              </button>
+            ) : (
+              <button style={st.addBtn} onClick={handleTrackingAdd}>
+                <Activity size={14} /> Создать отслеживание
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ===== CUSTOM ===== */}
+      {step === "custom" && (
+        <div style={st.form}>
+          <div style={st.field}>
+            <label style={st.label}>Название</label>
+            <input style={st.input} value={customTitle}
+              onChange={e => setCustomTitle(e.target.value)} placeholder="Моя колонка" />
+          </div>
+          <div style={st.field}>
+            <label style={st.label}>Тип</label>
+            <div style={st.typeRow}>
+              <button style={{ ...st.typeBtn, ...(customType === "posts" ? st.typeBtnActive : {}) }}
+                onClick={() => setCustomType("posts")}>Посты</button>
+              <button style={{ ...st.typeBtn, ...(customType === "feed" ? st.typeBtnActive : {}) }}
+                onClick={() => setCustomType("feed")}>Каналы</button>
+            </div>
+          </div>
+          {customType === "posts" && categories.length > 0 && (
+            <div style={st.field}>
+              <label style={st.label}>Категория</label>
+              <select style={st.select} value={selectedCategory}
+                onChange={e => setSelectedCategory(e.target.value)}>
+                <option value="">Все</option>
+                {categories.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+              </select>
+            </div>
+          )}
           {customType === "posts" && (
-            <div style={styles.field}>
-              <label style={styles.label}>
-                Каналы {selectedChannels.length > 0 && `(${selectedChannels.length})`}
-              </label>
-              <input style={styles.input} placeholder="Поиск..."
-                value={chSearch} onChange={e => setChSearch(e.target.value)} />
-              <div style={styles.chList}>
+            <div style={st.field}>
+              <label style={st.label}>Каналы {selectedChannels.length > 0 && `(${selectedChannels.length})`}</label>
+              <input style={st.input} placeholder="Поиск..." value={chSearch} onChange={e => setChSearch(e.target.value)} />
+              <div style={st.chList}>
                 {filtered.slice(0, 50).map(ch => {
                   const active = selectedChannels.includes(ch.username);
                   return (
                     <button key={ch.username}
-                      style={{ ...styles.chItem, ...(active ? styles.chItemActive : {}) }}
+                      style={{ ...st.chItem, ...(active ? st.chItemActive : {}) }}
                       onClick={() => setSelectedChannels(prev =>
                         active ? prev.filter(u => u !== ch.username) : [...prev, ch.username]
                       )}>
-                      {active ? "✓ " : ""}@{ch.username}
+                      <span style={st.chCheck}>{active ? "✓" : ""}</span>
+                      @{ch.username}
                     </button>
                   );
                 })}
               </div>
             </div>
           )}
-
-          <button style={styles.addBtn} onClick={handleCustomAdd}>
-            Добавить колонку
-          </button>
-          <button style={styles.backBtn} onClick={() => setStep("presets")}>
-            ← Назад к шаблонам
-          </button>
+          <button style={st.addBtn} onClick={handleCustomAdd}>Добавить колонку</button>
+          <button style={st.backBtn} onClick={() => setStep("presets")}>← Назад к шаблонам</button>
         </div>
       )}
     </div>
   );
 }
 
-const styles = {
+const st = {
   column: {
-    width: 380,
-    minWidth: 380,
-    height: "100%",
-    display: "flex",
-    flexDirection: "column",
-    borderRight: "1px solid var(--tg-border)",
-    background: "var(--tg-bg-secondary)",
+    width: 380, minWidth: 380, height: "100%", display: "flex", flexDirection: "column",
+    borderRight: "1px solid var(--tg-border)", background: "var(--tg-bg-secondary)",
   },
   header: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: "12px 14px",
-    borderBottom: "1px solid var(--tg-border)",
+    display: "flex", alignItems: "center", justifyContent: "space-between",
+    padding: "12px 14px", borderBottom: "1px solid var(--tg-border)",
   },
-  headerTitle: {
-    fontSize: 14,
-    fontWeight: 700,
-    color: "var(--tg-text)",
-  },
+  headerTitle: { fontSize: 14, fontWeight: 700, color: "var(--tg-text)" },
   closeBtn: {
-    width: 30,
-    height: 30,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    border: "none",
-    borderRadius: 8,
-    background: "transparent",
-    color: "var(--tg-text-muted)",
-    cursor: "pointer",
+    width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center",
+    border: "none", borderRadius: 8, background: "transparent", color: "var(--tg-text-muted)", cursor: "pointer",
   },
   presetsList: {
-    flex: 1,
-    overflowY: "auto",
-    padding: 8,
-    display: "flex",
-    flexDirection: "column",
-    gap: 4,
+    flex: 1, overflowY: "auto", padding: 8, display: "flex", flexDirection: "column", gap: 4,
   },
   presetBtn: {
-    display: "flex",
-    alignItems: "center",
-    gap: 12,
-    padding: "12px 12px",
-    border: "1px solid var(--tg-border)",
-    borderRadius: 12,
-    background: "var(--tg-bg-panel)",
-    cursor: "pointer",
-    textAlign: "left",
+    display: "flex", alignItems: "center", gap: 12, padding: "12px 12px",
+    border: "1px solid var(--tg-border)", borderRadius: 12, background: "var(--tg-bg-panel)",
+    cursor: "pointer", textAlign: "left", width: "100%", color: "var(--tg-text)",
     transition: "border-color 0.15s, background 0.15s",
-    width: "100%",
-    color: "var(--tg-text)",
   },
   presetIcon: {
-    width: 40,
-    height: 40,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 10,
-    flexShrink: 0,
+    width: 40, height: 40, display: "flex", alignItems: "center", justifyContent: "center",
+    borderRadius: 10, flexShrink: 0,
   },
-  presetInfo: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 2,
+  presetInfo: { display: "flex", flexDirection: "column", gap: 2 },
+  presetTitle: { fontSize: 14, fontWeight: 600 },
+  presetDesc: { fontSize: 12, color: "var(--tg-text-muted)" },
+
+  form: {
+    flex: 1, overflowY: "auto", padding: 14, display: "flex", flexDirection: "column", gap: 10,
   },
-  presetTitle: {
-    fontSize: 14,
-    fontWeight: 600,
-  },
-  presetDesc: {
-    fontSize: 12,
-    color: "var(--tg-text-muted)",
-  },
-  customForm: {
-    flex: 1,
-    overflowY: "auto",
-    padding: 14,
-    display: "flex",
-    flexDirection: "column",
-    gap: 12,
-  },
-  field: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 4,
-  },
+  field: { display: "flex", flexDirection: "column", gap: 4 },
   label: {
-    fontSize: 11,
-    fontWeight: 600,
-    color: "var(--tg-text-muted)",
-    textTransform: "uppercase",
+    fontSize: 11, fontWeight: 600, color: "var(--tg-text-muted)", textTransform: "uppercase", letterSpacing: 0.3,
   },
-  hint: {
-    fontSize: 11,
-    color: "var(--tg-text-muted)",
-    fontStyle: "italic",
-  },
+  hint: { fontSize: 11, color: "var(--tg-text-muted)", fontStyle: "italic" },
+  sectionTitle: { fontSize: 13, fontWeight: 600, color: "var(--tg-text)", marginTop: 4 },
+  divider: { height: 1, background: "var(--tg-border)", margin: "4px 0" },
   input: {
-    background: "var(--tg-bg-input)",
-    color: "var(--tg-text)",
-    border: "1px solid var(--tg-border)",
-    borderRadius: 8,
-    padding: "8px 10px",
-    fontSize: 13,
-    outline: "none",
+    background: "var(--tg-bg-input)", color: "var(--tg-text)",
+    border: "1px solid var(--tg-border)", borderRadius: 8, padding: "8px 10px", fontSize: 13, outline: "none",
   },
   select: {
-    background: "var(--tg-bg-input)",
-    color: "var(--tg-text)",
-    border: "1px solid var(--tg-border)",
-    borderRadius: 8,
-    padding: "8px 10px",
-    fontSize: 13,
-    outline: "none",
-    cursor: "pointer",
+    background: "var(--tg-bg-input)", color: "var(--tg-text)",
+    border: "1px solid var(--tg-border)", borderRadius: 8, padding: "8px 10px",
+    fontSize: 13, outline: "none", cursor: "pointer",
   },
-  typeRow: {
-    display: "flex",
-    gap: 6,
+
+  // Steps bar
+  stepsBar: {
+    display: "flex", alignItems: "center", gap: 8, padding: "6px 0 10px",
+    borderBottom: "1px solid var(--tg-border)", marginBottom: 4,
   },
-  typeBtn: {
-    flex: 1,
-    padding: "8px 0",
-    border: "1px solid var(--tg-border)",
-    borderRadius: 8,
-    background: "var(--tg-bg-panel)",
-    color: "var(--tg-text-secondary)",
-    fontSize: 13,
-    fontWeight: 500,
-    cursor: "pointer",
+  stepDot: {
+    width: 24, height: 24, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+    fontSize: 11, fontWeight: 700, background: "var(--tg-bg-input)", color: "var(--tg-text-muted)",
+    border: "1px solid var(--tg-border)", flexShrink: 0,
   },
-  typeBtnActive: {
-    background: "var(--tg-accent-muted)",
-    color: "var(--tg-accent)",
-    borderColor: "var(--tg-accent)",
+  stepDotActive: {
+    background: "var(--tg-accent-muted)", color: "var(--tg-accent)", borderColor: "var(--tg-accent)",
   },
+  stepsLabel: { fontSize: 12, color: "var(--tg-text-secondary)", fontWeight: 500, marginLeft: 4 },
+
+  // Track type buttons
+  trackTypeBtn: {
+    display: "flex", alignItems: "center", gap: 12, padding: "14px 12px",
+    border: "1px solid var(--tg-border)", borderRadius: 12, background: "var(--tg-bg-panel)",
+    cursor: "pointer", textAlign: "left", width: "100%", color: "var(--tg-text)",
+    transition: "border-color 0.15s",
+  },
+  trackTypeBtnActive: {
+    borderColor: "var(--tg-accent)", background: "var(--tg-accent-muted)",
+  },
+  trackTypeIcon: {
+    width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center",
+    borderRadius: 12, background: "rgba(255,255,255,0.05)", flexShrink: 0,
+  },
+  trackTypeInfo: { display: "flex", flexDirection: "column", gap: 2, flex: 1 },
+  trackTypeTitle: { fontSize: 14, fontWeight: 600 },
+  trackTypeDesc: { fontSize: 12, color: "var(--tg-text-muted)" },
+  checkMark: {
+    fontSize: 16, fontWeight: 700, color: "var(--tg-accent)", flexShrink: 0,
+  },
+
+  // Scope options
+  scopeOptions: { display: "flex", flexDirection: "column", gap: 4 },
+  scopeBtn: {
+    display: "flex", alignItems: "center", gap: 8, padding: "8px 10px",
+    border: "1px solid var(--tg-border)", borderRadius: 8, background: "var(--tg-bg-panel)",
+    cursor: "pointer", color: "var(--tg-text-secondary)", fontSize: 12, fontWeight: 500,
+    textAlign: "left", width: "100%", transition: "all 0.15s",
+  },
+  scopeBtnActive: {
+    borderColor: "var(--tg-accent)", background: "var(--tg-accent-muted)", color: "var(--tg-accent)",
+  },
+
+  // Chips
+  chipRow: { display: "flex", gap: 4, flexWrap: "wrap", marginTop: 2 },
+  chip: {
+    display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px",
+    borderRadius: 6, fontSize: 11, fontWeight: 500, background: "var(--tg-accent-muted)", color: "var(--tg-accent)",
+  },
+  chipX: {
+    display: "flex", alignItems: "center", justifyContent: "center",
+    width: 14, height: 14, border: "none", background: "transparent", color: "var(--tg-accent)", cursor: "pointer",
+  },
+
+  // Channel list
   chList: {
-    maxHeight: 200,
-    overflowY: "auto",
-    display: "flex",
-    flexDirection: "column",
-    gap: 2,
-    border: "1px solid var(--tg-border)",
-    borderRadius: 8,
-    padding: 4,
+    maxHeight: 180, overflowY: "auto", display: "flex", flexDirection: "column", gap: 1,
+    border: "1px solid var(--tg-border)", borderRadius: 8, padding: 3,
   },
   chItem: {
-    display: "block",
-    padding: "5px 8px",
-    background: "transparent",
-    border: "none",
-    borderRadius: 6,
-    color: "var(--tg-text-secondary)",
-    fontSize: 12,
-    cursor: "pointer",
-    textAlign: "left",
-    width: "100%",
+    display: "flex", alignItems: "center", gap: 6, padding: "5px 8px",
+    background: "transparent", border: "none", borderRadius: 6,
+    color: "var(--tg-text-secondary)", fontSize: 12, cursor: "pointer", textAlign: "left", width: "100%",
   },
-  chItemActive: {
-    background: "var(--tg-accent-muted)",
-    color: "var(--tg-accent)",
+  chItemActive: { background: "var(--tg-accent-muted)", color: "var(--tg-accent)" },
+  chCheck: { width: 14, fontSize: 11, color: "var(--tg-accent)", fontWeight: 700 },
+  chTitle: {
+    fontSize: 11, color: "var(--tg-text-muted)", marginLeft: 4,
+    whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
   },
+
+  // Search wizard
+  dateRow: {
+    display: "flex", alignItems: "center", gap: 6,
+  },
+  dateInput: {
+    flex: 1, background: "var(--tg-bg-input)", color: "var(--tg-text)",
+    border: "1px solid var(--tg-border)", borderRadius: 8, padding: "7px 8px",
+    fontSize: 12, outline: "none", colorScheme: "dark",
+  },
+  dateDash: { color: "var(--tg-text-muted)", fontSize: 12, flexShrink: 0 },
+  sortRow: { display: "flex", gap: 4 },
+  orderToggle: {
+    width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center",
+    background: "var(--tg-bg-input)", border: "1px solid var(--tg-border)", borderRadius: 8,
+    color: "var(--tg-text)", fontSize: 15, cursor: "pointer", flexShrink: 0,
+  },
+  filtersGrid: {
+    display: "flex", gap: 6, flexWrap: "wrap",
+  },
+  filterChip: {
+    display: "flex", alignItems: "center", gap: 5, padding: "5px 10px",
+    borderRadius: 8, border: "1px solid var(--tg-border)", background: "var(--tg-bg-panel)",
+    fontSize: 12, color: "var(--tg-text-secondary)", cursor: "pointer",
+  },
+  rangeFilters: {
+    display: "flex", gap: 8,
+  },
+
+  // Wizard nav
+  wizardNav: {
+    display: "flex", justifyContent: "space-between", alignItems: "center",
+    marginTop: 8, paddingTop: 10, borderTop: "1px solid var(--tg-border)",
+  },
+  wizardBackBtn: {
+    display: "flex", alignItems: "center", gap: 4, padding: "8px 12px",
+    border: "none", background: "transparent", color: "var(--tg-text-muted)",
+    fontSize: 13, cursor: "pointer",
+  },
+  wizardNextBtn: {
+    display: "flex", alignItems: "center", gap: 4, padding: "8px 16px",
+    border: "none", borderRadius: 8, background: "var(--tg-accent)", color: "#fff",
+    fontSize: 13, fontWeight: 600, cursor: "pointer",
+  },
+  wizardNextBtnDisabled: { opacity: 0.4, cursor: "not-allowed" },
+
+  // Shared buttons
+  typeRow: { display: "flex", gap: 6 },
+  typeBtn: {
+    flex: 1, padding: "8px 0", border: "1px solid var(--tg-border)", borderRadius: 8,
+    background: "var(--tg-bg-panel)", color: "var(--tg-text-secondary)", fontSize: 13, fontWeight: 500, cursor: "pointer",
+  },
+  typeBtnActive: { background: "var(--tg-accent-muted)", color: "var(--tg-accent)", borderColor: "var(--tg-accent)" },
   addBtn: {
-    padding: "10px 0",
-    borderRadius: 10,
-    border: "none",
-    background: "var(--tg-accent)",
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: 600,
-    cursor: "pointer",
-    marginTop: 8,
+    display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+    padding: "10px 0", borderRadius: 10, border: "none", background: "var(--tg-accent)",
+    color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer", marginTop: 4,
   },
   backBtn: {
-    padding: "8px 0",
-    border: "none",
-    background: "transparent",
-    color: "var(--tg-text-muted)",
-    fontSize: 13,
-    cursor: "pointer",
+    padding: "8px 0", border: "none", background: "transparent",
+    color: "var(--tg-text-muted)", fontSize: 13, cursor: "pointer",
   },
 };

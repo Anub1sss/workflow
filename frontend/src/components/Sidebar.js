@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import {
-  Columns3, Table2, Plus, Sparkles, BarChart3, Star,
+  Columns3, Table2, Plus, Sparkles, Star,
   ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { useFavorites } from "../hooks/useFavorites";
@@ -36,13 +36,6 @@ export default function Sidebar({ view, setView, onAddColumn, columnCount }) {
           label="Каталог"
           active={view === "catalog"}
           onClick={() => setView("catalog")}
-          expanded={expanded}
-        />
-        <SidebarBtn
-          icon={<BarChart3 size={20} />}
-          label="Аналитика"
-          active={view === "analytics"}
-          onClick={() => setView("analytics")}
           expanded={expanded}
         />
       </div>

@@ -106,9 +106,9 @@ button:active {
   transform: scale(0.97);
 }
 
-/* Post card hover */
+/* Post card hover - TG style */
 .post-card:hover {
-  background: rgba(255,255,255,0.02);
+  background: var(--tg-bg-hover) !important;
 }
 
 /* Channel row hover */
@@ -158,4 +158,19 @@ tbody tr:nth-child(even) {
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button {
   opacity: 0.3;
+}
+
+/* Reaction pills hover */
+.post-card .reactionPill:hover {
+  background: var(--tg-reaction-active);
+}
+
+/* Catalog table row highlight */
+tbody tr:hover td {
+  transition: background 0.1s;
+}
+
+/* Toolbar button hover */
+.tool-btn:hover {
+  border-color: var(--tg-border-hover);
 }

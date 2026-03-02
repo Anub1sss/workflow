@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import Sidebar from "./components/Sidebar";
 import ColumnManager from "./components/ColumnManager";
-import CatalogView from "./components/CatalogView";
 import ChannelModal from "./components/ChannelModal";
 import StatsView from "./components/StatsView";
 
@@ -68,13 +67,7 @@ export default function App() {
         )}
 
         {view === "catalog" && (
-          <CatalogView onSelectChannel={setSelected} />
-        )}
-
-        {view === "analytics" && (
-          <div style={styles.analyticsWrap}>
-            <StatsView />
-          </div>
+          <StatsView onSelectChannel={setSelected} />
         )}
       </div>
 
@@ -94,10 +87,5 @@ const styles = {
     overflow: "hidden",
     display: "flex",
     flexDirection: "column",
-  },
-  analyticsWrap: {
-    flex: 1,
-    overflow: "auto",
-    padding: 20,
   },
 };
