@@ -1,9 +1,10 @@
 import React from "react";
-import { Eye, Share2, Heart, MessageSquare, TrendingUp, TrendingDown, Camera, ExternalLink } from "lucide-react";
+import { Eye, Share2, Heart, MessageSquare, TrendingUp, TrendingDown, Camera, ExternalLink, Star } from "lucide-react";
+import { useFavorites } from "../hooks/useFavorites";
 
 const CATEGORY_COLORS = {
   "Кейс применения": "#4fae4e",
-  "Научная публикация": "#5ea5e5",
+  "Научная публикация": "#2aabee",
   "Обзор инструмента": "#e8a447",
   "Туториал / Гайд": "#9b7cd5",
   "Новость индустрии": "#e05353",
@@ -48,10 +49,21 @@ function DevBadge({ value, label }) {
   );
 }
 
-export default function PostCard({ post }) {
+export default function PostCard({ post, onClickChannel }) {
+  const { isFavorite, toggle } = useFavorites();
   const catColor = CATEGORY_COLORS[post.category] || "var(--tg-accent)";
   const text = (post.text || "").trim();
-  const preview = text.length > 400 ? text.slice(0, 400) + "…" : text;
+  const preview = text.length > 400 ? text.slice(0, 400) + "..." : text;
+  const isFav = isFavorite(post.channel_username);
+
+  const handleToggleFav = (e) => {
+    e.stopPropagation();
+    toggle({
+      username: post.channel_username,
+      title: post.channel_title || post.channel_username,
+      image100: "",
+    });
+  };
 
   const hasDeviation = !!(post.views_dev || post.reactions_dev || post.comments_dev || post.forwards_dev);
   const channelInitial = (post.channel_title || post.channel_username || "?").charAt(0).toUpperCase();
@@ -59,29 +71,38 @@ export default function PostCard({ post }) {
     ? `https://t.me/${post.channel_username}/${post.tg_message_id}`
     : null;
 
+  const handleChannelClick = (e) => {
+    e.stopPropagation();
+    if (onClickChannel) onClickChannel(post.channel_username);
+  };
+
   return (
     <div style={styles.message}>
-      {/* Channel avatar */}
-      <div style={styles.avatarCol}>
+      <div style={styles.avatarCol} onClick={handleChannelClick}>
         <div style={styles.avatar}>{channelInitial}</div>
       </div>
 
-      {/* Bubble */}
       <div style={styles.bubble}>
-        {/* Channel name + time */}
         <div style={styles.bubbleHeader}>
-          <span style={styles.channelName}>{post.channel_title || post.channel_username}</span>
+          <span style={styles.channelName} onClick={handleChannelClick}>
+            {post.channel_title || post.channel_username}
+          </span>
+          <button
+            style={{ ...styles.favBtn, color: isFav ? "var(--tg-orange)" : "var(--tg-text-muted)" }}
+            onClick={handleToggleFav}
+            title={isFav ? "Убрать из избранного" : "В избранное"}
+          >
+            <Star size={12} fill={isFav ? "var(--tg-orange)" : "none"} />
+          </button>
           <span style={styles.time}>{formatTime(post.date)}</span>
         </div>
 
-        {/* Category tag (like a colored label in TG) */}
         {post.category && (
           <span style={{ ...styles.categoryTag, background: catColor + "20", color: catColor, borderColor: catColor + "40" }}>
             {post.category}
           </span>
         )}
 
-        {/* Ad / Gambling badges */}
         {(post.is_ad === 1 || post.is_gambling === 1) && (
           <div style={styles.warningRow}>
             {post.is_ad === 1 && <span style={styles.adLabel}>Реклама</span>}
@@ -89,7 +110,6 @@ export default function PostCard({ post }) {
           </div>
         )}
 
-        {/* Photo indicator */}
         {post.has_photo === 1 && (
           <div style={styles.photoPlaceholder}>
             <Camera size={20} color="var(--tg-text-muted)" />
@@ -97,14 +117,12 @@ export default function PostCard({ post }) {
           </div>
         )}
 
-        {/* Message text */}
         {preview ? (
           <p style={styles.text}>{preview}</p>
         ) : (
           <p style={styles.mediaText}>Медиа-пост</p>
         )}
 
-        {/* Reactions row — Telegram style */}
         {(post.reactions > 0 || post.comments > 0 || post.forwards > 0) && (
           <div style={styles.reactionsRow}>
             {post.reactions > 0 && (
@@ -125,7 +143,6 @@ export default function PostCard({ post }) {
           </div>
         )}
 
-        {/* Deviation row */}
         {hasDeviation && (
           <div style={styles.devRow}>
             <DevBadge value={post.views_dev} label="Просм." />
@@ -135,7 +152,6 @@ export default function PostCard({ post }) {
           </div>
         )}
 
-        {/* Bottom meta: views + time — exactly like Telegram */}
         <div style={styles.bubbleFooter}>
           {post.views > 0 && (
             <span style={styles.viewsCounter}>
@@ -170,7 +186,7 @@ const styles = {
     width: 36,
     height: 36,
     borderRadius: "50%",
-    background: "linear-gradient(135deg, #5ea5e5, #9b7cd5)",
+    background: "linear-gradient(135deg, #2aabee, #9b7cd5)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -188,6 +204,7 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     gap: 4,
+    boxShadow: "0 1px 2px rgba(0,0,0,0.15)",
   },
   bubbleHeader: {
     display: "flex",
@@ -200,6 +217,22 @@ const styles = {
     fontWeight: 600,
     color: "var(--tg-accent)",
     cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+  },
+  favBtn: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 22,
+    height: 22,
+    border: "none",
+    borderRadius: 6,
+    background: "transparent",
+    cursor: "pointer",
+    padding: 0,
+    transition: "color 0.15s",
+    flexShrink: 0,
   },
   time: {
     fontSize: 11,

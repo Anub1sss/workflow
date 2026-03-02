@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Search, ChevronDown, ChevronUp, Settings, ArrowUpDown, RotateCcw } from "lucide-react";
+import { Search, ChevronDown, ChevronUp, Settings, ArrowUpDown, RotateCcw, Star } from "lucide-react";
 import { fetchChannels } from "../api";
+import { useFavorites } from "../hooks/useFavorites";
 
 const COLUMNS = [
   { key: "title", label: "Канал", fixed: true },
@@ -91,6 +92,26 @@ function renderCell(ch, col) {
       if (col.numeric) return formatNum(val);
       return String(val);
   }
+}
+
+function FavStar({ channel }) {
+  const { isFavorite, toggle } = useFavorites();
+  const fav = isFavorite(channel.username);
+  return (
+    <button
+      style={{
+        display: "flex", alignItems: "center", justifyContent: "center",
+        width: 28, height: 28, border: "none", borderRadius: 6,
+        background: "transparent", cursor: "pointer", padding: 0,
+        color: fav ? "var(--tg-orange)" : "var(--tg-text-muted)",
+        transition: "color 0.15s",
+      }}
+      onClick={(e) => { e.stopPropagation(); toggle(channel); }}
+      title={fav ? "Убрать из избранного" : "В избранное"}
+    >
+      <Star size={15} fill={fav ? "var(--tg-orange)" : "none"} />
+    </button>
+  );
 }
 
 export default function CatalogView({ onSelectChannel }) {
@@ -268,6 +289,7 @@ export default function CatalogView({ onSelectChannel }) {
           <thead>
             <tr>
               <th style={styles.thNum}>#</th>
+              <th style={styles.thStar}><Star size={13} color="var(--tg-orange)" /></th>
               {activeCols.map(col => (
                 <th key={col.key}
                   style={{ ...styles.th, ...(col.key === "title" ? styles.thChannel : {}), cursor: col.key !== "title" ? "pointer" : "default" }}
@@ -289,6 +311,7 @@ export default function CatalogView({ onSelectChannel }) {
                 onMouseEnter={e => e.currentTarget.style.background = "var(--tg-bg-hover)"}
                 onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                 <td style={styles.tdNum}>{idx + 1}</td>
+                <td style={styles.tdStar}><FavStar channel={ch} /></td>
                 {activeCols.map(col => (
                   <td key={col.key} style={{ ...styles.td, ...(col.key === "title" ? styles.tdChannel : {}) }}>
                     {renderCell(ch, col)}
@@ -578,6 +601,21 @@ const styles = {
     top: 0,
     background: "var(--tg-bg-secondary)",
     zIndex: 1,
+  },
+  thStar: {
+    width: 36,
+    textAlign: "center",
+    padding: "10px 4px",
+    borderBottom: "1px solid var(--tg-border)",
+    position: "sticky",
+    top: 0,
+    background: "var(--tg-bg-secondary)",
+    zIndex: 1,
+  },
+  tdStar: {
+    textAlign: "center",
+    padding: "4px",
+    verticalAlign: "middle",
   },
   th: {
     padding: "10px 12px",

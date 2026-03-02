@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { X, RotateCcw } from "lucide-react";
+import { X, RotateCcw, Sparkles } from "lucide-react";
 import { fetchCategories, fetchChannelsList } from "../api";
 
 const CHANNEL_SORTS = [
@@ -46,6 +46,22 @@ const POST_RANGES = [
   { label: "Откл. просм. (%)", min: "min_p_views_dev", max: "max_p_views_dev" },
 ];
 
+const QUALITY_PRESETS = [
+  { label: "Всё", filters: {} },
+  {
+    label: "Топ контент",
+    filters: { min_p_views: "1000", min_p_reactions: "10" },
+  },
+  {
+    label: "Вирусные",
+    filters: { min_p_views_dev: "50", sort: "views_dev", order: "desc" },
+  },
+  {
+    label: "Без рекламы",
+    filters: { hide_gambling: "1" },
+  },
+];
+
 export default function ColumnFilters({ column, onChange, onClose, isPostColumn }) {
   const [categories, setCategories] = useState([]);
   const [channelsList, setChannelsList] = useState([]);
@@ -63,6 +79,8 @@ export default function ColumnFilters({ column, onChange, onClose, isPostColumn 
   const ranges = isPostColumn ? POST_RANGES : CHANNEL_RANGES;
 
   const set = (key, val) => onChange({ [key]: val });
+
+  const applyMultiple = (updates) => onChange(updates);
 
   const reset = () => {
     const clean = {};
@@ -99,6 +117,26 @@ export default function ColumnFilters({ column, onChange, onClose, isPostColumn 
         </div>
       </div>
 
+      {/* Quality presets (posts only) */}
+      {isPostColumn && (
+        <div style={styles.field}>
+          <label style={styles.label}>
+            <Sparkles size={10} /> Пресеты качества
+          </label>
+          <div style={styles.presetsRow}>
+            {QUALITY_PRESETS.map((p) => (
+              <button
+                key={p.label}
+                style={styles.presetChip}
+                onClick={() => applyMultiple(p.filters)}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Sort */}
       <div style={styles.field}>
         <label style={styles.label}>Сортировка</label>
@@ -113,6 +151,52 @@ export default function ColumnFilters({ column, onChange, onClose, isPostColumn 
           </button>
         </div>
       </div>
+
+      {/* Date range (posts only) */}
+      {isPostColumn && (
+        <div style={styles.field}>
+          <label style={styles.label}>Дата</label>
+          <div style={styles.rangeRow}>
+            <input
+              style={styles.dateInput}
+              type="date"
+              value={f.date_from || ""}
+              onChange={e => set("date_from", e.target.value)}
+            />
+            <span style={styles.dash}>—</span>
+            <input
+              style={styles.dateInput}
+              type="date"
+              value={f.date_to || ""}
+              onChange={e => set("date_to", e.target.value)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Format (posts only) */}
+      {isPostColumn && (
+        <div style={styles.field}>
+          <label style={styles.label}>Формат</label>
+          <div style={styles.formatRow}>
+            <label style={styles.formatChip}>
+              <input type="checkbox" checked={f.only_photo === "1"}
+                onChange={e => set("only_photo", e.target.checked ? "1" : "")} />
+              С фото
+            </label>
+            <label style={styles.formatChip}>
+              <input type="checkbox" checked={f.only_ad === "1"}
+                onChange={e => set("only_ad", e.target.checked ? "1" : "")} />
+              Реклама
+            </label>
+            <label style={styles.formatChip}>
+              <input type="checkbox" checked={f.show_empty === "1"}
+                onChange={e => set("show_empty", e.target.checked ? "1" : "")} />
+              Медиа
+            </label>
+          </div>
+        </div>
+      )}
 
       {/* Type (channels only) */}
       {!isPostColumn && (
@@ -177,12 +261,25 @@ export default function ColumnFilters({ column, onChange, onClose, isPostColumn 
         </div>
       ))}
 
+      {/* Quality thresholds (posts) */}
+      {isPostColumn && (
+        <>
+          <div style={styles.divider} />
+          <label style={styles.sectionLabel}>Фильтр качества</label>
+          <div style={styles.field}>
+            <label style={styles.label}>Мин. ER канала (%)</label>
+            <input style={styles.numInput} type="number" step="0.01" placeholder="напр. 0.3"
+              value={f.min_channel_er || ""} onChange={e => set("min_channel_er", e.target.value)} />
+          </div>
+        </>
+      )}
+
       {/* Toggles */}
       <div style={styles.divider} />
       <label style={styles.toggleRow}>
         <input type="checkbox" checked={f.hide_gambling === "1"}
           onChange={e => set("hide_gambling", e.target.checked ? "1" : "")} />
-        <span>Скрыть гемблинг</span>
+        <span>Скрыть гемблинг и рекламу</span>
       </label>
       {!isPostColumn && (
         <label style={styles.toggleRow}>
@@ -203,7 +300,7 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     gap: 8,
-    maxHeight: 400,
+    maxHeight: 500,
     overflowY: "auto",
     flexShrink: 0,
   },
@@ -244,11 +341,30 @@ const styles = {
     color: "var(--tg-text-muted)",
     textTransform: "uppercase",
     letterSpacing: 0.3,
+    display: "flex",
+    alignItems: "center",
+    gap: 4,
   },
   sectionLabel: {
     fontSize: 11,
     fontWeight: 700,
     color: "var(--tg-text-secondary)",
+  },
+  presetsRow: {
+    display: "flex",
+    gap: 4,
+    flexWrap: "wrap",
+  },
+  presetChip: {
+    padding: "4px 10px",
+    borderRadius: 8,
+    border: "1px solid var(--tg-border)",
+    background: "var(--tg-bg-panel)",
+    color: "var(--tg-text-secondary)",
+    fontSize: 11,
+    fontWeight: 500,
+    cursor: "pointer",
+    transition: "all 0.15s",
   },
   select: {
     background: "var(--tg-bg-input)",
@@ -271,6 +387,17 @@ const styles = {
     outline: "none",
     width: "100%",
   },
+  dateInput: {
+    flex: 1,
+    background: "var(--tg-bg-input)",
+    color: "var(--tg-text)",
+    border: "1px solid var(--tg-border)",
+    borderRadius: 8,
+    padding: "5px 6px",
+    fontSize: 12,
+    outline: "none",
+    colorScheme: "dark",
+  },
   sortRow: {
     display: "flex",
     gap: 4,
@@ -288,6 +415,23 @@ const styles = {
     fontSize: 14,
     cursor: "pointer",
     flexShrink: 0,
+  },
+  formatRow: {
+    display: "flex",
+    gap: 6,
+    flexWrap: "wrap",
+  },
+  formatChip: {
+    display: "flex",
+    alignItems: "center",
+    gap: 4,
+    padding: "4px 8px",
+    borderRadius: 6,
+    border: "1px solid var(--tg-border)",
+    background: "var(--tg-bg-panel)",
+    fontSize: 11,
+    color: "var(--tg-text-secondary)",
+    cursor: "pointer",
   },
   rangeRow: {
     display: "flex",

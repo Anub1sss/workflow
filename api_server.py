@@ -140,6 +140,14 @@ def _channel_conditions(args):
     if has_chat == "1":
         conditions.append("has_linked_chat = 1")
 
+    usernames = args.get("usernames", "").strip()
+    if usernames:
+        u_list = [u.strip() for u in usernames.split(",") if u.strip()]
+        if u_list:
+            placeholders = ",".join("?" * len(u_list))
+            conditions.append(f"username IN ({placeholders})")
+            params.extend(u_list)
+
     for param_name, (col, op) in NUMERIC_FILTERS.items():
         val = args.get(param_name, "").strip()
         if val:
@@ -386,6 +394,23 @@ def list_posts():
     if only_photo == "1":
         conditions.append("p.has_photo = 1")
 
+    date_from = request.args.get("date_from", "").strip()
+    date_to = request.args.get("date_to", "").strip()
+    if date_from:
+        conditions.append("p.date >= ?")
+        params.append(date_from)
+    if date_to:
+        conditions.append("p.date <= ?")
+        params.append(date_to + " 23:59:59")
+
+    min_er = request.args.get("min_channel_er", "").strip()
+    if min_er:
+        try:
+            conditions.append("c.er_pct >= ?")
+            params.append(float(min_er))
+        except ValueError:
+            pass
+
     for param_name, (col, op) in POST_NUMERIC_FILTERS.items():
         val = request.args.get(param_name, "").strip()
         if val:
@@ -423,6 +448,56 @@ def list_posts():
         "per_page": per_page,
         "pages": max(1, (total + per_page - 1) // per_page),
     })
+
+
+# ── Analytics ─────────────────────────────────────────────────────
+
+@app.route("/api/stats/posting-hours")
+def posting_hours():
+    channels_param = request.args.get("channels", "").strip()
+    conditions, params = [], []
+    if channels_param:
+        ch_list = [c.strip() for c in channels_param.split(",") if c.strip()]
+        if ch_list:
+            placeholders = ",".join("?" * len(ch_list))
+            conditions.append(f"channel_username IN ({placeholders})")
+            params.extend(ch_list)
+
+    where = f"WHERE date IS NOT NULL AND {' AND '.join(conditions)}" if conditions else "WHERE date IS NOT NULL"
+    db = get_db()
+    rows = db.execute(f"""
+        SELECT CAST(strftime('%H', date) AS INTEGER) as hour, COUNT(*) as cnt
+        FROM posts {where}
+        GROUP BY hour ORDER BY hour
+    """, params).fetchall()
+    db.close()
+
+    hours = {i: 0 for i in range(24)}
+    for r in rows:
+        if r["hour"] is not None:
+            hours[r["hour"]] = r["cnt"]
+
+    return jsonify([{"hour": h, "count": c} for h, c in sorted(hours.items())])
+
+
+@app.route("/api/stats/compare")
+def compare_channels():
+    channels_param = request.args.get("channels", "").strip()
+    if not channels_param:
+        return jsonify({"error": "channels parameter required"}), 400
+
+    ch_list = [c.strip() for c in channels_param.split(",") if c.strip()]
+    if not ch_list:
+        return jsonify({"error": "No channels specified"}), 400
+
+    placeholders = ",".join("?" * len(ch_list))
+    db = get_db()
+    rows = db.execute(
+        f"SELECT * FROM channels WHERE username IN ({placeholders})", ch_list
+    ).fetchall()
+    db.close()
+
+    return jsonify([dict(r) for r in rows])
 
 
 @app.route("/", defaults={"path": ""})

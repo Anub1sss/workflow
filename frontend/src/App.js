@@ -3,10 +3,12 @@ import Sidebar from "./components/Sidebar";
 import ColumnManager from "./components/ColumnManager";
 import CatalogView from "./components/CatalogView";
 import ChannelModal from "./components/ChannelModal";
+import StatsView from "./components/StatsView";
 
 const DEFAULT_COLUMNS = [
-  { id: "all", title: "Все каналы", type: "feed", filters: {}, pinned: true },
-  { id: "posts-all", title: "Лента постов", type: "posts", filters: {}, pinned: true },
+  { id: "posts-all", title: "Лента постов", type: "posts", filters: { sort: "date", order: "desc" }, pinned: true },
+  { id: "all-channels", title: "Все каналы", type: "feed", filters: { sort: "subscribers", order: "desc" }, pinned: true },
+  { id: "viral", title: "Вирусные", type: "viral", filters: {}, pinned: false },
 ];
 
 export default function App() {
@@ -68,6 +70,12 @@ export default function App() {
         {view === "catalog" && (
           <CatalogView onSelectChannel={setSelected} />
         )}
+
+        {view === "analytics" && (
+          <div style={styles.analyticsWrap}>
+            <StatsView />
+          </div>
+        )}
       </div>
 
       <ChannelModal channel={selected} onClose={() => setSelected(null)} />
@@ -86,5 +94,10 @@ const styles = {
     overflow: "hidden",
     display: "flex",
     flexDirection: "column",
+  },
+  analyticsWrap: {
+    flex: 1,
+    overflow: "auto",
+    padding: 20,
   },
 };

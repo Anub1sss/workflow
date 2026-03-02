@@ -49,3 +49,15 @@ export async function fetchTags() {
   if (!res.ok) throw new Error("Failed to fetch tags");
   return res.json();
 }
+
+export async function fetchPostingHours(params = {}) {
+  const res = await fetch(`${BASE}/stats/posting-hours?${qs(params)}`);
+  if (!res.ok) throw new Error("Failed to fetch posting hours");
+  return res.json();
+}
+
+export async function fetchCompareChannels(params = {}) {
+  const res = await fetch(`${BASE}/stats/compare?${qs(params)}`);
+  if (!res.ok) throw new Error("Failed to compare channels");
+  return res.json();
+}

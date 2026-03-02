@@ -13,29 +13,31 @@
   --tg-text: #f5f5f5;
   --tg-text-secondary: #8b9bab;
   --tg-text-muted: #6b7b8b;
-  --tg-accent: #5ea5e5;
-  --tg-accent-hover: #6cb6f0;
-  --tg-accent-muted: rgba(94,165,229,0.15);
+  --tg-accent: #2aabee;
+  --tg-accent-hover: #3dbcf8;
+  --tg-accent-muted: rgba(42,171,238,0.15);
   --tg-green: #4fae4e;
   --tg-green-muted: rgba(79,174,78,0.15);
   --tg-orange: #e8a447;
   --tg-orange-muted: rgba(232,164,71,0.15);
   --tg-red: #e05353;
   --tg-red-muted: rgba(224,83,83,0.15);
-  --tg-blue: #5ea5e5;
-  --tg-blue-muted: rgba(94,165,229,0.15);
+  --tg-blue: #2aabee;
+  --tg-blue-muted: rgba(42,171,238,0.15);
   --tg-purple: #9b7cd5;
   --tg-purple-muted: rgba(155,124,213,0.15);
   --tg-link: #6ab2f2;
-  --tg-reaction-bg: rgba(94,165,229,0.12);
-  --tg-reaction-active: rgba(94,165,229,0.25);
+  --tg-reaction-bg: rgba(42,171,238,0.12);
+  --tg-reaction-active: rgba(42,171,238,0.25);
   --tg-radius: 12px;
   --tg-radius-sm: 8px;
   --tg-radius-bubble: 18px;
   --tg-sidebar-width: 68px;
   --tg-column-width: 380px;
+  --tg-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  --tg-shadow-lg: 0 8px 32px rgba(0,0,0,0.4);
 
-  /* Legacy aliases for components not yet migrated */
+  /* Legacy aliases */
   --bg-primary: var(--tg-bg);
   --bg-secondary: var(--tg-bg-secondary);
   --bg-card: var(--tg-bg-panel);
@@ -79,15 +81,81 @@ body {
   flex-direction: column;
 }
 
-::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15); }
 
 input, select, button, textarea { font-family: inherit; }
 
 a { color: var(--tg-link); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
+/* Animations */
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes slideIn { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+
+/* Interactive hover effects */
+button:hover {
+  filter: brightness(1.1);
+}
+
+button:active {
+  transform: scale(0.97);
+}
+
+/* Post card hover */
+.post-card:hover {
+  background: rgba(255,255,255,0.02);
+}
+
+/* Channel row hover */
+.channel-row:hover {
+  background: var(--tg-bg-hover) !important;
+}
+
+/* Smooth transitions for sidebar */
+.sidebar-transition {
+  transition: width 0.2s ease;
+}
+
+/* Column drag indicator */
+.column-drag {
+  cursor: grab;
+}
+
+/* Date input styling for dark mode */
+input[type="date"] {
+  color-scheme: dark;
+}
+
+/* Select styling */
+select {
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b7b8b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 14px;
+  padding-right: 28px !important;
+}
+
+/* Checkbox styling */
+input[type="checkbox"] {
+  accent-color: var(--tg-accent);
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
+/* Table striping */
+tbody tr:nth-child(even) {
+  background: rgba(255,255,255,0.01);
+}
+
+/* Number input hide arrows */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  opacity: 0.3;
+}

@@ -1,9 +1,25 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { X, Settings, Search, Columns3 } from "lucide-react";
-import { fetchChannels, fetchPosts } from "../api";
+import {
+  X, Settings, Search, Columns3, Zap, Star, Hash, Users, AtSign, Eye,
+} from "lucide-react";
+import { fetchChannels, fetchPosts, fetchChannel } from "../api";
+import { useFavorites } from "../hooks/useFavorites";
 import PostCard from "./PostCard";
 import ChannelRow from "./ChannelRow";
 import ColumnFilters from "./ColumnFilters";
+
+const COLUMN_ICONS = {
+  feed: <Columns3 size={14} color="var(--tg-accent)" />,
+  posts: <Columns3 size={14} color="var(--tg-accent)" />,
+  my_feed: <Star size={14} color="var(--tg-orange)" />,
+  my_channels: <Star size={14} color="var(--tg-orange)" />,
+  keywords: <Hash size={14} color="var(--tg-green)" />,
+  mentions: <AtSign size={14} color="var(--tg-purple)" />,
+  competitors: <Users size={14} color="var(--tg-blue)" />,
+  viral: <Zap size={14} color="var(--tg-red)" />,
+};
+
+const VIRAL_THRESHOLD = 50;
 
 export default function DeckColumn({ column, onRemove, onUpdate, onSelectChannel }) {
   const [items, setItems] = useState([]);
@@ -19,7 +35,11 @@ export default function DeckColumn({ column, onRemove, onUpdate, onSelectChannel
   const loadingRef = useRef(false);
   const sentinelRef = useRef(null);
 
-  const isPostColumn = column.type === "posts";
+  const { favorites } = useFavorites();
+
+  const colType = column.type || "posts";
+  const isPostColumn = ["posts", "my_feed", "keywords", "mentions", "competitors", "viral"].includes(colType);
+  const isMyChannelsColumn = colType === "my_channels";
 
   const resetAndLoad = useCallback(() => {
     setItems([]);
@@ -29,7 +49,7 @@ export default function DeckColumn({ column, onRemove, onUpdate, onSelectChannel
 
   useEffect(() => {
     resetAndLoad();
-  }, [column.filters, searchVal, resetAndLoad]);
+  }, [column.filters, searchVal, resetAndLoad, favorites]);
 
   const loadPage = useCallback(async (p) => {
     if (loadingRef.current) return;
@@ -42,9 +62,62 @@ export default function DeckColumn({ column, onRemove, onUpdate, onSelectChannel
         if (v) params[k] = v;
       });
 
+      if (isMyChannelsColumn) {
+        const isSearching = !!(searchVal && searchVal.trim());
+        if (!isSearching && favorites.length === 0) {
+          setItems([]);
+          setTotal(0);
+          setHasMore(false);
+          return;
+        }
+        const chParams = {
+          page: p, per_page: 50,
+          search: searchVal || undefined,
+          sort: f.sort || "subscribers",
+          order: f.order || "desc",
+        };
+        if (!isSearching) {
+          chParams.usernames = favorites.map(fv => fv.username).join(",");
+        }
+        const result = await fetchChannels(chParams);
+        setItems(prev => p === 1 ? result.channels : [...prev, ...result.channels]);
+        setTotal(result.total);
+        setHasMore(p < result.pages);
+        return;
+      }
+
       if (isPostColumn) {
         if (!params.sort) params.sort = "date";
         if (!params.order) params.order = "desc";
+
+        if (colType === "my_feed") {
+          if (favorites.length === 0) {
+            setItems([]);
+            setTotal(0);
+            setHasMore(false);
+            return;
+          }
+          params.channels = favorites.map(f => f.username).join(",");
+        }
+
+        if (colType === "keywords" && column.keywords) {
+          params.search = column.keywords;
+        }
+
+        if (colType === "mentions" && column.keywords) {
+          params.search = column.keywords;
+        }
+
+        if (colType === "competitors" && column.competitorChannels) {
+          params.channels = column.competitorChannels;
+        }
+
+        if (colType === "viral") {
+          params.min_p_views_dev = params.min_p_views_dev || String(VIRAL_THRESHOLD);
+          params.sort = params.sort || "views_dev";
+          params.order = params.order || "desc";
+        }
+
         const result = await fetchPosts(params);
         setItems(prev => p === 1 ? result.posts : [...prev, ...result.posts]);
         setTotal(result.total);
@@ -64,7 +137,7 @@ export default function DeckColumn({ column, onRemove, onUpdate, onSelectChannel
       loadingRef.current = false;
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [column.filters, searchVal, isPostColumn]);
+  }, [column.filters, column.keywords, column.competitorChannels, searchVal, colType, favorites]);
 
   useEffect(() => { loadPage(page); }, [page, loadPage]);
 
@@ -86,12 +159,28 @@ export default function DeckColumn({ column, onRemove, onUpdate, onSelectChannel
     onUpdate({ filters: { ...(column.filters || {}), ...updates } });
   };
 
+  const handlePostChannelClick = async (username) => {
+    try {
+      const ch = await fetchChannel(username);
+      onSelectChannel(ch);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const icon = COLUMN_ICONS[colType] || COLUMN_ICONS.posts;
+
+  const emptyMsg = colType === "my_channels"
+    ? "Нажмите на лупу и найдите каналы"
+    : colType === "my_feed"
+    ? "Добавьте каналы в избранное через колонку «Мои каналы»"
+    : "Ничего не найдено";
+
   return (
     <div style={styles.column}>
-      {/* Column header */}
       <div style={styles.header}>
         <div style={styles.headerLeft}>
-          <Columns3 size={14} color="var(--tg-accent)" />
+          {icon}
           <span style={styles.title}>{column.title}</span>
           <span style={styles.count}>{total}</span>
         </div>
@@ -110,13 +199,12 @@ export default function DeckColumn({ column, onRemove, onUpdate, onSelectChannel
         </div>
       </div>
 
-      {/* Search bar */}
       {searchOpen && (
         <div style={styles.searchBar}>
           <Search size={14} color="var(--tg-text-muted)" />
           <input
             style={styles.searchInput}
-            placeholder="Поиск..."
+            placeholder={isMyChannelsColumn ? "Найти канал для добавления..." : "Поиск..."}
             value={searchVal}
             onChange={e => setSearchVal(e.target.value)}
             autoFocus
@@ -129,7 +217,6 @@ export default function DeckColumn({ column, onRemove, onUpdate, onSelectChannel
         </div>
       )}
 
-      {/* Filters panel */}
       {filtersOpen && (
         <ColumnFilters
           column={column}
@@ -139,20 +226,33 @@ export default function DeckColumn({ column, onRemove, onUpdate, onSelectChannel
         />
       )}
 
-      {/* Scrollable content */}
       <div style={styles.scrollArea} ref={scrollRef}>
         {items.length === 0 && !loading && (
-          <div style={styles.empty}>Ничего не найдено</div>
+          <div style={styles.empty}>
+            <div style={styles.emptyIcon}>
+              {colType === "my_feed" || colType === "my_channels"
+                ? <Star size={32} color="var(--tg-text-muted)" />
+                : <Eye size={32} color="var(--tg-text-muted)" />}
+            </div>
+            {emptyMsg}
+          </div>
         )}
 
         {isPostColumn ? (
           <div style={styles.postsList}>
-            {items.map(p => <PostCard key={p.id} post={p} />)}
+            {items.map(p => (
+              <PostCard key={p.id} post={p} onClickChannel={handlePostChannelClick} />
+            ))}
           </div>
         ) : (
           <div style={styles.channelsList}>
             {items.map(ch => (
-              <ChannelRow key={ch.username} channel={ch} onClick={() => onSelectChannel(ch)} />
+              <ChannelRow
+                key={ch.username}
+                channel={ch}
+                onClick={() => onSelectChannel(ch)}
+                showFavStar
+              />
             ))}
           </div>
         )}
@@ -277,6 +377,13 @@ const styles = {
     padding: 40,
     color: "var(--tg-text-muted)",
     fontSize: 13,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 12,
+  },
+  emptyIcon: {
+    opacity: 0.5,
   },
   loading: {
     display: "flex",

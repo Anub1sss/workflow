@@ -1,5 +1,6 @@
 import React from "react";
-import { Users, Eye, TrendingUp, MessageCircle } from "lucide-react";
+import { Users, Eye, TrendingUp, MessageCircle, Star } from "lucide-react";
+import { useFavorites } from "../hooks/useFavorites";
 
 function formatNum(n) {
   if (!n) return "0";
@@ -23,7 +24,8 @@ function timeAgo(ts) {
   return new Date(ts * 1000).toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
 }
 
-export default function ChannelRow({ channel, onClick }) {
+export default function ChannelRow({ channel, onClick, showFavStar = false }) {
+  const { isFavorite, toggle } = useFavorites();
   const hasAvatar = channel.image100 && channel.image100.startsWith("http");
   const initial = (channel.title || channel.username || "?").charAt(0).toUpperCase();
   const subs = channel.tg_participants || channel.subscribers || 0;
@@ -31,10 +33,15 @@ export default function ChannelRow({ channel, onClick }) {
   const er = channel.er_pct || 0;
   const lastPostText = (channel.last_post_text || "").replace(/<[^>]+>/g, "").trim();
   const preview = lastPostText.length > 60 ? lastPostText.slice(0, 60) + "…" : lastPostText;
+  const fav = isFavorite(channel.username);
+
+  const handleFav = (e) => {
+    e.stopPropagation();
+    toggle(channel);
+  };
 
   return (
     <div style={styles.row} onClick={onClick}>
-      {/* Avatar */}
       {hasAvatar ? (
         <img src={channel.image100} alt="" style={styles.avatar}
           onError={e => { e.target.style.display = "none"; e.target.nextSibling.style.display = "flex"; }} />
@@ -43,7 +50,6 @@ export default function ChannelRow({ channel, onClick }) {
         {initial}
       </div>
 
-      {/* Info */}
       <div style={styles.info}>
         <div style={styles.topLine}>
           <span style={styles.name}>{channel.title || channel.username}</span>
@@ -76,10 +82,13 @@ export default function ChannelRow({ channel, onClick }) {
         </div>
       </div>
 
-      {/* Type badge */}
-      {channel.channel_type_detected && (
-        <div style={styles.typeDot} title={channel.channel_type_detected} />
-      )}
+      <button
+        style={{ ...styles.favBtn, color: fav ? "var(--tg-orange)" : "var(--tg-text-muted)" }}
+        onClick={handleFav}
+        title={fav ? "Убрать из избранного" : "В избранное"}
+      >
+        <Star size={16} fill={fav ? "var(--tg-orange)" : "none"} />
+      </button>
     </div>
   );
 }
@@ -159,12 +168,18 @@ const styles = {
     fontSize: 11,
     color: "var(--tg-text-muted)",
   },
-  typeDot: {
-    width: 8,
-    height: 8,
-    borderRadius: "50%",
-    background: "var(--tg-accent)",
+  favBtn: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 30,
+    height: 30,
+    border: "none",
+    borderRadius: 8,
+    background: "transparent",
+    cursor: "pointer",
     flexShrink: 0,
-    marginTop: 6,
+    marginTop: 4,
+    transition: "color 0.15s",
   },
 };

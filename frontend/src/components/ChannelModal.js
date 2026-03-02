@@ -2,8 +2,9 @@ import React from "react";
 import {
   X, Users, Eye, MessageCircle, Hash, ExternalLink, AlertTriangle,
   Megaphone, Globe, MapPin, Clock, TrendingUp, TrendingDown, BarChart3,
-  Activity, Calendar, MessageSquare, Share2, Zap, Heart, Camera,
+  Activity, Calendar, MessageSquare, Share2, Zap, Heart, Camera, Star,
 } from "lucide-react";
+import { useFavorites } from "../hooks/useFavorites";
 
 function formatNum(n) {
   if (!n) return "0";
@@ -40,9 +41,11 @@ function stabilityColor(s) {
 }
 
 export default function ChannelModal({ channel, onClose }) {
+  const { isFavorite, toggle } = useFavorites();
   if (!channel) return null;
 
   const ch = channel;
+  const fav = isFavorite(ch.username);
   const hasAvatar = ch.image640 && ch.image640.startsWith("http");
   const postText = stripHtml(ch.last_post_text);
   const hasLastPost = postText.length > 0 || ch.last_post_date > 0 || ch.last_post_views > 0 || ch.last_post_link;
@@ -60,7 +63,16 @@ export default function ChannelModal({ channel, onClose }) {
   return (
     <div style={styles.overlay} onClick={onClose}>
       <div style={styles.modal} onClick={e => e.stopPropagation()}>
-        <button style={styles.close} onClick={onClose}><X size={20} /></button>
+        <div style={styles.topActions}>
+          <button
+            style={{ ...styles.favButton, color: fav ? "var(--tg-orange)" : "var(--tg-text-muted)" }}
+            onClick={() => toggle(ch)}
+            title={fav ? "Убрать из избранного" : "В избранное"}
+          >
+            <Star size={18} fill={fav ? "var(--tg-orange)" : "none"} />
+          </button>
+          <button style={styles.close} onClick={onClose}><X size={20} /></button>
+        </div>
 
         {/* Header */}
         <div style={styles.header}>
@@ -286,8 +298,17 @@ const styles = {
     maxHeight: "90vh", overflowY: "auto", position: "relative",
     display: "flex", flexDirection: "column", gap: 16,
   },
-  close: {
+  topActions: {
     position: "absolute", top: 12, right: 12,
+    display: "flex", gap: 6,
+  },
+  favButton: {
+    background: "var(--tg-bg-panel)", border: "1px solid var(--tg-border)",
+    borderRadius: 8, width: 32, height: 32,
+    display: "flex", alignItems: "center", justifyContent: "center",
+    cursor: "pointer", transition: "color 0.15s",
+  },
+  close: {
     background: "var(--tg-bg-panel)", border: "1px solid var(--tg-border)",
     borderRadius: 8, width: 32, height: 32,
     display: "flex", alignItems: "center", justifyContent: "center",
